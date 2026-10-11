@@ -1,4 +1,5 @@
 import { body, gravity, hop, pole, run, TILE } from '../data/tuning';
+import { createCarry, onLeftPole, onPlanted, reachOf, stepAim, stepCarry, type CarryState } from './carry';
 import type { ActionFrame } from './input';
 import { Level, moveBox, type Rect } from './level';
 import { gripPosition, launchQuality, startVault, stepVault, vaultVelocity, type VaultState } from './vault';
@@ -42,6 +43,8 @@ export interface Player {
   vaultApexY: number;
   vaultStartX: number;
   lastQuality: number;
+  /** Hands, lean, bob, aim inertia and the flexible pole (v2). */
+  carry: CarryState;
 }
 
 export function createPlayer(x: number, y: number): Player {
@@ -64,6 +67,7 @@ export function createPlayer(x: number, y: number): Player {
     vaultApexY: y,
     vaultStartX: x,
     lastQuality: 0,
+    carry: createCarry(),
   };
 }
 
@@ -76,13 +80,20 @@ export function vaultBox(gripX: number, gripY: number): Rect {
   return { x: gripX - body.width / 2, y: gripY - body.vaultBoxAbove, w: body.width, h: body.vaultBoxAbove + body.vaultBoxBelow };
 }
 
+/** Where the hands hold the pole (their midpoint): moves with lean and running bob. */
 export function gripOf(p: Player): { x: number; y: number } {
-  return { x: p.x, y: p.y - body.gripHeight };
+  return { x: p.x + p.carry.anchorDX, y: p.y + p.carry.anchorDY };
+}
+
+/** Grip-to-tip length right now: longer once the hands have climbed back toward the butt. */
+export function reach(p: Player): number {
+  return reachOf(p.carry);
 }
 
 export function poleTip(p: Player): { x: number; y: number } {
   const g = gripOf(p);
-  return { x: g.x + Math.cos(p.aim) * pole.length, y: g.y + Math.sin(p.aim) * pole.length };
+  const L = reach(p);
+  return { x: g.x + Math.cos(p.aim) * L, y: g.y + Math.sin(p.aim) * L };
 }
 
 function approach(value: number, target: number, amount: number): number {
@@ -162,11 +173,10 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
 
   // --- Pole aim / plant swing ---
   if (p.poleMode === 'carry') {
-    const target = aimTarget(input, p.facing);
-    const diff = wrapAngle(target - p.aim);
-    p.aim = wrapAngle(p.aim + Math.sign(diff) * Math.min(Math.abs(diff), pole.aimSpeed * dt));
+    p.aim = stepAim(p.carry, p.aim, aimTarget(input, p.facing), dt);
     if (input.pressed.aimDown && p.poleRecover <= 0 && canPlantFromAim(p.aim)) {
       p.poleMode = 'swing';
+      p.carry.aimVel = 0;
       events.push({ type: 'plantSwing' });
     }
   } else if (p.poleMode === 'swing') {
@@ -202,6 +212,21 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       events.push({ type: 'step' });
     }
   }
+
+  stepCarry(
+    p.carry,
+    {
+      x: p.x,
+      y: p.y,
+      vx: p.vx,
+      facing: p.facing,
+      grounded: p.grounded,
+      aim: p.aim,
+      stridePhase: p.strideDistance / run.strideLength,
+      allowHandMoves: p.poleMode === 'carry',
+    },
+    dt,
+  );
 }
 
 function stepPlantSwing(p: Player, level: Level, input: ActionFrame, dt: number, events: GameEvent[]): void {
@@ -212,21 +237,31 @@ function stepPlantSwing(p: Player, level: Level, input: ActionFrame, dt: number,
   const side = Math.cos(p.aim) >= 0 ? 1 : -1;
   const target = side > 0 ? Math.PI / 2 - 0.15 : Math.PI / 2 + 0.15; // nearly straight down
   const diff = wrapAngle(target - p.aim);
-  p.aim = wrapAngle(p.aim + Math.sign(diff) * Math.min(Math.abs(diff), pole.plantSwingSpeed * dt));
+  const turn = Math.sign(diff) * Math.min(Math.abs(diff), pole.plantSwingSpeed * dt);
 
-  const hit = firstSolidAlongPole(p, level, p.aim);
+  // Sweep the drop in small angle steps so the first contact is found where it really happens.
+  const steps = Math.max(1, Math.ceil(Math.abs(turn) / PLANT_SWEEP_STEP));
+  let hit: { x: number; y: number; d: number } | null = null;
+  for (let i = 0; i < steps && hit === null; i++) {
+    const a = wrapAngle(p.aim + turn / steps);
+    hit = firstSolidAlongPole(p, level, a);
+    if (hit === null) p.aim = a;
+  }
+
   if (hit !== null) {
     const grip = gripOf(p);
+    const L = reach(p);
     const tileTop = Math.floor(hit.y / TILE) * TILE;
-    const nearTip = hit.d >= pole.length - PLANT_TIP_ZONE;
-    const sin = (tileTop - grip.y) / pole.length;
+    const nearTip = hit.d >= L - PLANT_TIP_ZONE;
+    const sin = (tileTop - grip.y) / L;
     if (nearTip && grip.y < tileTop && sin <= 1 && !level.isSolidAt(hit.x, tileTop - 1)) {
       // The tip came down onto a top surface: plant exactly where the tip touches it.
       const exact = side > 0 ? Math.asin(sin) : Math.PI - Math.asin(sin);
-      if (firstSolidAlongPole(p, level, exact, pole.length - 1) === null) {
+      if (firstSolidAlongPole(p, level, exact, L - 1) === null) {
         p.aim = exact;
-        const tipX = grip.x + Math.cos(exact) * pole.length;
-        p.vault = startVault(tipX, tileTop, grip.x, grip.y, p.vx, p.vy);
+        const tipX = grip.x + Math.cos(exact) * L;
+        p.vault = startVault(tipX, tileTop, grip.x, grip.y, p.vx, p.vy, L);
+        onPlanted(p.carry);
         p.poleMode = 'planted';
         p.grounded = false;
         p.hopHeld = false;
@@ -252,11 +287,13 @@ function jam(p: Player, side: number, events: GameEvent[]): void {
   events.push({ type: 'stab' });
 }
 
-/** Contacts this close to the tip count as the tip landing (the tip moves up to ~9 px per tick). */
-const PLANT_TIP_ZONE = 14;
+/** Contacts this close to the tip count as the tip landing; anything further up the shaft jams. */
+const PLANT_TIP_ZONE = 6;
+/** Angle step (rad) for sweeping the tip drop: the tip moves < 1 px per step. */
+const PLANT_SWEEP_STEP = 0.01;
 
 /** First solid point along the pole at `angle`, marching out from the grip; null if clear. */
-function firstSolidAlongPole(p: Player, level: Level, angle: number, length = pole.length): { x: number; y: number; d: number } | null {
+function firstSolidAlongPole(p: Player, level: Level, angle: number, length = reach(p)): { x: number; y: number; d: number } | null {
   const g = gripOf(p);
   const cx = Math.cos(angle);
   const cy = Math.sin(angle);
@@ -317,5 +354,6 @@ function leavePole(p: Player, vx: number, vy: number): void {
   p.grounded = false;
   p.inVaultFlight = true;
   p.vaultApexY = p.y;
-  p.aim = p.facing > 0 ? -pole.carryElevation : -Math.PI + pole.carryElevation;
+  // The aim keeps the pole's angle at release and swings back to carry from there (no snap).
+  onLeftPole(p.carry);
 }

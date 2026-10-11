@@ -41,6 +41,8 @@ export interface VaultState {
   plantPhi: number;
   /** Total energy at plant (relative to the pivot), for launch quality. */
   plantEnergy: number;
+  /** Grip-to-tip length of the pole for this vault (depends on where the hands were). */
+  length: number;
 }
 
 const SUBSTEPS = 4;
@@ -48,7 +50,7 @@ const SUBSTEPS = 4;
 export const maxBendEnergy = (): number => 0.5 * pole.stiffness * pole.maxCompression * pole.maxCompression;
 
 export function bendEnergy(v: VaultState): number {
-  const c = pole.length - v.r;
+  const c = v.length - v.r;
   return c > 0 ? 0.5 * pole.stiffness * c * c : 0;
 }
 
@@ -59,7 +61,8 @@ export function totalEnergy(v: VaultState): number {
 
 /**
  * Starts a vault with the vaulter's grip at (gripX, gripY) moving at (vx, vy),
- * pole tip planted at (pivotX, pivotY).
+ * pole tip planted at (pivotX, pivotY). `length` = grip-to-tip distance
+ * (longer when the hands are further back on the pole).
  */
 export function startVault(
   pivotX: number,
@@ -68,11 +71,12 @@ export function startVault(
   gripY: number,
   vx: number,
   vy: number,
+  length: number = pole.length,
 ): VaultState {
   const dir: 1 | -1 = pivotX >= gripX ? 1 : -1;
   const dx = (gripX - pivotX) * dir;
   const up = pivotY - gripY;
-  const r = Math.min(pole.length, Math.hypot(dx, up));
+  const r = Math.min(length, Math.hypot(dx, up));
   const phi = Math.atan2(dx, up);
   // Unit vectors in world space (y down): radial out from pivot, tangential forward.
   const ux = dir * Math.sin(phi);
@@ -99,6 +103,7 @@ export function startVault(
     releasePhi: phi,
     plantPhi: phi,
     plantEnergy: 0,
+    length,
   };
   state.plantEnergy = totalEnergy(state);
   return state;
@@ -118,7 +123,7 @@ export function stepVault(v: VaultState, held: boolean, dt: number): VaultStepOu
   const h = dt / SUBSTEPS;
   const k = pole.stiffness * (v.releasing ? pole.returnEfficiency : 1);
   for (let i = 0; i < SUBSTEPS; i++) {
-    const c = Math.max(0, pole.length - v.r);
+    const c = Math.max(0, v.length - v.r);
     const spring = c > 0 ? k * c : 0;
 
     // Semi-implicit Euler in polar coordinates.
@@ -135,13 +140,13 @@ export function stepVault(v: VaultState, held: boolean, dt: number): VaultStepOu
     if (latched && !v.bleeding) driveSwing(v, h);
 
     // Bend limit: the pole can't fold further, the excess inward speed is lost.
-    if (v.r < pole.length - pole.maxCompression) {
-      v.r = pole.length - pole.maxCompression;
+    if (v.r < v.length - pole.maxCompression) {
+      v.r = v.length - pole.maxCompression;
       if (v.vr < 0) v.vr = 0;
     }
     // The vaulter holds on: the chord can't extend past the pole length.
-    if (v.r >= pole.length) {
-      v.r = pole.length;
+    if (v.r >= v.length) {
+      v.r = v.length;
       if (v.releasing && v.vr > 0) {
         return 'launched';
       }
@@ -155,7 +160,7 @@ export function stepVault(v: VaultState, held: boolean, dt: number): VaultStepOu
   if (v.held && bend > 0 && bend >= v.peakBend - 1e-3) v.timeAtPeak += dt;
   if (v.held && bend > 0 && (v.phi > pole.bleedAngle || v.timeAtPeak > pole.bleedDelay)) v.bleeding = true;
   if (v.bleeding && v.held) bleedBend(v, dt);
-  if (v.releasing && v.r >= pole.length - 1e-6) return 'launched';
+  if (v.releasing && v.r >= v.length - 1e-6) return 'launched';
 
   if (v.phi > pole.autoReleaseAngle) return 'tippedOver';
   if (v.omega < 0 && v.phi < v.plantPhi - 0.02) return 'fellBack';
@@ -172,9 +177,9 @@ export function stepVault(v: VaultState, held: boolean, dt: number): VaultStepOu
 function driveSwing(v: VaultState, h: number): void {
   if (v.omega < 0) return;
   const k = pole.stiffness;
-  const c = pole.length - v.r;
+  const c = v.length - v.r;
   const c2 = c * Math.exp(-pole.drive * h);
-  const r2 = pole.length - c2;
+  const r2 = v.length - c2;
   const omega2 = (v.omega * v.r * v.r) / (r2 * r2);
   const cos = Math.cos(v.phi);
   const before = 0.5 * (v.r * v.omega) ** 2 + gravity.g * v.r * cos + 0.5 * k * c * c;
@@ -192,10 +197,10 @@ function driveSwing(v: VaultState, h: number): void {
  * (straightening lifts the vaulter, which must be paid for by the bend).
  */
 function bleedBend(v: VaultState, dt: number): void {
-  const c = pole.length - v.r;
+  const c = v.length - v.r;
   if (c <= 0) return;
   const c2 = c * Math.exp(-0.5 * pole.bleedRate * dt);
-  const r2 = pole.length - c2;
+  const r2 = v.length - c2;
   const omega2 = (v.omega * v.r * v.r) / (r2 * r2);
   const cos = Math.cos(v.phi);
   const k = pole.stiffness;

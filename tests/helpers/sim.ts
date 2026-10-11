@@ -21,6 +21,8 @@ export interface VaultAttempt {
   holdAfterPlant: number;
   /** Hold the aimRight key from the start (pole poised forward). */
   runSeconds?: number;
+  /** Only start holding aimRight (pole poised forward) from this x; default: from the start. */
+  poiseAtX?: number;
   /** Optional span to measure clearance over (e.g. the wall). */
   wallFromX?: number;
   wallToX?: number;
@@ -58,8 +60,9 @@ export function attemptVault(a: VaultAttempt, spec: FlatLevelSpec = firstWall, m
   let t = 0;
   let afterRelease = 0;
   while (t < maxTime) {
-    const now = new Set<Action>(['right', 'aimRight']);
     const p = world.player;
+    const now = new Set<Action>(['right']);
+    if (a.poiseAtX === undefined || p.x >= a.poiseAtX) now.add('aimRight');
     if (!downPressed && p.x >= a.plantAtX) downPressed = true;
     if (downPressed && !released) {
       if (plantedAt < 0 || t - plantedAt < a.holdAfterPlant) now.add('aimDown');

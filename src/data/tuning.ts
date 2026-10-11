@@ -16,7 +16,7 @@ export const body = {
   width: 10,
   height: 26,
   /** Height of the pole grip (hands, roughly head height) above the feet. */
-  gripHeight: 22,
+  gripHeight: 20,
   /** Collision box while on the pole, measured from the grip (legs swing free). */
   vaultBoxAbove: 4,
   vaultBoxBelow: 10,
@@ -53,9 +53,10 @@ export const hop = {
 };
 
 export const pole = {
+  /** Grip-to-tip vaulting length with the hands fully back (hands at grip.vault). */
   length: 76,
-  /** How fast the arrow keys swing the carried pole (rad/s). */
-  aimSpeed: 10,
+  /** Butt-to-tip length of the whole pole. */
+  totalLength: 80,
   /** Neutral carry angle above horizontal when no arrow is held. */
   carryElevation: Math.PI / 3,
   /** Down only plants if the pole is within this angle of horizontal. */
@@ -91,6 +92,75 @@ export const pole = {
   /** Forward speed at launch below which quality is scaled down (an up-and-back launch is not a good vault). */
   qualityForwardSpeed: 90,
   perfectThreshold: 0.8,
+};
+
+/** How the vaulter holds and carries the pole (v2: weight, lean, hands, aim inertia). */
+export const carry = {
+  // --- Hands: hand-over-hand along the pole. Positions are px from the butt. ---
+  /** Midpoint between the hands when poised to vault (pole held out forward). grip-to-tip = totalLength - this. */
+  gripVault: 4,
+  /** Midpoint between the hands in a relaxed carry (pole balanced, shorter lever). */
+  gripCarry: 20,
+  /** Distance between the two hands. */
+  handGap: 7,
+  /** Seconds for one hand to let go, pass the other hand and re-grip. */
+  handMoveTime: 0.1,
+  /** Pause between hand moves. */
+  handMovePause: 0.03,
+  /** How much a moving hand loosens its grip mid-move (0 = stays firm, 1 = lets go completely). */
+  handLoosen: 0.85,
+  /** Once within a hand-gap of the target, the pole slides through both hands at this speed (px/s). */
+  slideSpeed: 40,
+  /** The pole counts as "poised" (hands climb back) within this angle of horizontal. */
+  poisedAngle: (35 * Math.PI) / 180,
+
+  // --- Aim inertia: the pole is swung by a damped spring, slower when more of it sticks out. ---
+  /** Natural frequency of the aim spring (rad/s) with the hands at gripCarry. */
+  aimOmega: 16,
+  aimDamping: 0.85,
+  /** Upper limit on how fast the arms can swing the pole (rad/s). */
+  aimMaxSpeed: 11,
+  /** How hard the arms can accelerate the pole round (rad/s^2). Lower = heavier pole, gentler whip. */
+  aimMaxAccel: 40,
+
+  // --- Lean: the pole's weight out front gradually tips the body forward. ---
+  /** Max forward lean from the pole's weight (rad) when held horizontal with the hands at the butt. */
+  leanFromPole: 0.16,
+  /** Forward lean from running at top speed (rad). */
+  leanFromSpeed: 0.06,
+  /** Lean spring: natural frequency (rad/s) and damping ratio. Low = slow, weighty, a little sway. */
+  leanOmega: 3.2,
+  leanDamping: 0.55,
+
+  // --- Running bob: the hands rise and fall with each stride, shaking the pole. ---
+  /** Vertical bob of the shoulders at top speed (px). */
+  bobAtMaxSpeed: 2.6,
+  /** Bob when jogging slowly (px); scales up toward bobAtMaxSpeed. */
+  bobAtLowSpeed: 1.0,
+  /** How quickly the shoulders follow the bob curve (1/s); high = sharp foot-strike jolts. */
+  bobFollowRate: 45,
+  /** Hand position forward of the body centre (px) and grip height above the feet. */
+  handForward: 6,
+};
+
+/** The carried pole as a flexible beam (visual + feel; vault physics uses the rigid line). */
+export const beam = {
+  /** Number of simulated points along the pole. */
+  nodes: 17,
+  /** Tip wobble frequency (Hz) for the overhang with the hands fully back. Lower = wobblier. */
+  tipFrequency: 4.0,
+  /** Velocity damping (1/s): how fast the wobble dies down. */
+  damping: 3.2,
+  /** Extra damping of sharp kinks (s); smooths out jagged high-frequency ripples. */
+  kinkDamping: 0.00002,
+  /** Hand grip stiffness (1/s^2): hands are strong springs, not rigid pins. */
+  handStiffness: 2000000,
+  handDamping: 2500,
+  /** Caps on frame accelerations fed into the beam (px/s^2, rad/s^2) to avoid one-tick spikes. */
+  maxFrameAccel: 9000,
+  maxAngularAccel: 110,
+  /** Speed (px/s) of the twang the pole gets when the vaulter leaves it. */
+  launchTwang: 260,
 };
 
 export const camera = {
