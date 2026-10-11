@@ -1,6 +1,7 @@
 import { Application, Rectangle } from 'pixi.js';
 import { AudioEngine } from '../audio/AudioEngine';
 import { SIM_DT, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { longRunHints } from '../data/hints';
 import { resetPoleToHands } from '../gameplay/carry';
 import { InputState, type Action } from '../gameplay/input';
 import { PixelStage } from '../rendering/PixelStage';
@@ -74,6 +75,7 @@ export class App {
    *   __vaulter.hold(['right','aimRight'], 2.5)   // hold actions for 2.5 s of game time
    *   __vaulter.state()
    *   __vaulter.teleport(col)                     // feet on the ground at that tile column, pole in hand
+   *   __vaulter.carveHints()                      // carve every stuck hint now (to look at them)
    */
   private installDevHook(): void {
     const app = this;
@@ -111,6 +113,11 @@ export class App {
         resetPoleToHands(p.carry, p.x, p.y);
         this.game.view.resetView();
         return hook.hold([], 0.3);
+      },
+      carveHints: () => {
+        if (!this.game) return 'no game';
+        for (const h of longRunHints) this.game.view.carve({ id: h.id, lines: h.lines, x: h.x, y: h.y });
+        return hook.hold([], 3);
       },
       state: () => {
         const w = this.game?.world;

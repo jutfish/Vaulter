@@ -49,6 +49,18 @@ the controls have more depth; it's harder, like old-school games, and that's
 good. So: keep the pole's mess (scrapes, jams, losing it) and let skill be
 learning to manage it. Don't smooth it away to make things easier.
 
+## Discover, then execute (v0.4 playtest, 2026-10-11)
+JT: the backwards jump was fiddly to discover but very satisfying once found,
+and that is exactly the vibe. The game will be short, perhaps one continuous
+level. The whole game is discovering what you can do with the pole, then
+executing it. So:
+- Obstacles should have a "trick" to find, not just a harder number.
+- Help comes late and carved into the land, never as a tutorial popup: a
+  hint appears only after a real struggle at that spot (minutes, counted
+  across restarts), and nudges rather than solves.
+- The pole catching on things should be strict: it's a real object, so it
+  hooks, jams and gets yanked away rather than sliding through the ground.
+
 ## Levels: shapes, not gimmicks (v0.4)
 Levels stay pure platforming. The variety comes from the shape of the ground
 and how the vaulter and pole meet it: slopes up and down (speed, pole

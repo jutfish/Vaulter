@@ -89,6 +89,32 @@ Last wall (64 px), from after the last pothole at full speed
 Pressed earlier than ~190 px before the cliff, the backwards vault hits the
 ledge's underside (knocked off the pole).
 
+## Hints carved into the land (v0.5)
+
+The game is about discovering what the pole can do, so help arrives late,
+in the world, and only where you're struggling. `src/data/hints.ts` lists
+them; `HintTracker` (`src/gameplay/hints.ts`) counts seconds the player's
+feet spend in an obstacle's zone before it's solved (counted across restarts
+with R; solving it once stops the clock for good). The text is carved
+letter by letter into the earth (3x5 pixel font, `src/rendering/pixelFont.ts`)
+and stays carved.
+
+| Hint | After | Where | Text |
+|---|---|---|---|
+| firstVault | 45 s before the warm-up wall | ground | how to point, plant, bend, release |
+| potholes | 60 s | ground under the holes | sprint, hop before the edge, hold for longer |
+| plateau | 90 s | ground before it | the pole can take you up onto things |
+| ledge | 3 min under the ledge | cliff face | NOT EVERY VAULT HAS TO GO FORWARDS. |
+| ledge2 | 5 min | cliff face | let go early, hold the way you came |
+| tier | 2 min on the ledge | in the ledge | ONCE MORE, THE OTHER WAY. |
+| bigWall | 2 min | ground before it | more speed down the slope, plant on the flat, let go sooner |
+| lastWall | 2 min | ground | plant two pole-lengths out, let go as it stands up |
+| lost pole | 3 s without it | ground where you are | OOPS, BE CAREFUL NOT TO LOSE YOUR POLE! IF YOU CAN'T FIND IT, PRESS R TO RESTART. |
+
+The lost-pole hint is carved again where you are if you lose it more than
+240 px from the last one, and moves down past any hint already carved there.
+Dev: `__vaulter.carveHints()` carves them all to look at.
+
 ## Rules of thumb
 
 - A wall ≤ 48 px is a rhythm obstacle; 64 px needs a clean vault at full

@@ -256,7 +256,6 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       allowHandMoves: p.poleMode === 'carry',
       swingRate: p.poleMode === 'swing' ? pole.plantSwingSpeed : 0,
       level,
-      collide: p.poleMode !== 'swing',
     },
     dt,
   );
@@ -272,7 +271,11 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   if (p.carry.held) applyPolePush(p, h.fx, h.fy, vxBefore, vyBefore, dt);
   if (h.contact > POLE_HIT_EVENT) events.push({ type: 'poleHit', x: h.contact > 0 ? h.contactX : p.x, y: h.contactY, strength: h.contact, floor: h.contactFloor });
 
-  if (p.poleMode === 'swing') checkPlantContact(p, level, leadBefore, events);
+  if (p.poleMode === 'swing') {
+    // The shaft came down on something before the tip touched: a jam.
+    if (h.contact > SWING_JAM_CONTACT) jam(p, Math.cos(p.aim) >= 0 ? 1 : -1, events);
+    else checkPlantContact(p, level, leadBefore, events);
+  }
 }
 
 /**
@@ -347,6 +350,9 @@ function jam(p: Player, side: number, events: GameEvent[]): void {
   p.carry.leadCmd = side > 0 ? 0 : Math.PI;
   events.push({ type: 'stab' });
 }
+
+/** Contact impulse (px/s) on the shaft during the plant drop that counts as jamming it. */
+const SWING_JAM_CONTACT = 30;
 
 /** Contact impulse (px/s) above which the pole hitting the level is an event (sound, dust). */
 const POLE_HIT_EVENT = 60;

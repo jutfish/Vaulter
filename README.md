@@ -66,6 +66,9 @@ leads to the cliff top. Down the long slope at speed into the big wall (let
 go earlier than usual: faster run, earlier release), two more potholes, the
 last wall and the flag.
 
+**Stuck?** Keep trying: after a while at the same spot, a hint is carved
+into the land nearby.
+
 **How to vault:** hold D and → from the start. Holding the pole
 out level makes the hands climb back to the end of the pole (watch the hands);
 plant before they get there and you vault on a shorter pole. When you're

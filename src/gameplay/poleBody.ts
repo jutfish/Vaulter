@@ -39,8 +39,12 @@ export interface Grip {
   omega: number;
   /** Grip strength multiplier: 1 = normal, lower while a hand is moving, higher for the plant. */
   grip: number;
-  /** The level to collide with (omit for no collisions, e.g. during the committed plant drop). */
+  /** The level to collide with (omit for no collisions). */
   solid?: SolidQuery;
+  /** Stretch of the pole (s from..to) that passes through floors (top surfaces), still colliding
+   *  with walls and ceilings: the lead side during the plant drop, so the plant check sees the tip
+   *  touch down (or the shaft land on something and jam). */
+  exempt?: { from: number; to: number };
 }
 
 /** What the pole needs to know about the level. */
@@ -155,6 +159,7 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
     strain = Math.max(strain, tCap > 0 ? Math.abs(want) / tCap : 99);
 
     // Rigid body about its centre: hand force (and its moment), arms' couple, gravity.
+    const pose: Pose = { cx: b.cx, cy: b.cy, theta: b.theta };
     b.vx += fx * h;
     b.vy += (fy + gravity.g) * h;
     b.omega += ((rx * fy - ry * fx + couple) / INERTIA) * h;
@@ -164,7 +169,7 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
     fxSum += fx;
     fySum += fy;
 
-    if (g.solid) collideAll(b, g.solid, h, out, tally);
+    if (g.solid) collideAll(b, pose, g.solid, out, tally, g.exempt);
   }
   out.contactFloor = tally.floor >= tally.wall;
   out.fx = fxSum / SUBSTEPS;
@@ -176,8 +181,19 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
 // --- Contacts with the level ---------------------------------------------------
 
 /** Spacing of the contact points along the pole (px). */
-const CONTACT_SPACING = 4;
+const CONTACT_SPACING = 2;
 const TILE_SIZE = 16;
+/** Farthest (px) searched for a way out when a point is buried with no open face next to it. */
+const EXIT_SEARCH = 40;
+/** Most a single contact moves the pole per substep (px): deep ones come out over a few substeps, not in a jump. */
+const MAX_CORRECTION = 3;
+
+/** The pole's pose at the start of a substep: contacts push points back out the way they came in. */
+interface Pose {
+  cx: number;
+  cy: number;
+  theta: number;
+}
 
 interface Contact {
   x: number;
@@ -187,55 +203,99 @@ interface Contact {
 }
 
 /**
- * If the point s on the pole is inside a solid tile, push it out through the
- * nearest open face: an impulse that stops it moving inward (with a little
- * bounce), friction along the surface, and a positional correction.
+ * Which way out of the ground for a point now at (x, y) that was at (qx, qy)
+ * a substep ago: the face (or slope diagonal) it crossed on the way in, and
+ * how deep past it the point is. A point that was already inside goes out the
+ * nearest open face, or the shortest way along an axis if it's buried.
  */
-function contactAt(b: PoleBody, solid: SolidQuery, s: number, h: number): Contact | null {
-  const u = s - L / 2;
-  const rx = Math.cos(b.theta) * u;
-  const ry = Math.sin(b.theta) * u;
-  const x = b.cx + rx;
-  const y = b.cy + ry;
-  if (!solid.isSolidAt(x, y)) return null;
-
-  // Nearest open face of the tile the point is in (a slope pushes out across its diagonal).
+function exitFor(solid: SolidQuery, x: number, y: number, qx: number, qy: number): { nx: number; ny: number; depth: number } {
+  const slope = solid.slopePush?.(x, y) ?? null;
+  if (!solid.isSolidAt(qx, qy)) {
+    // Find where it went in: march from the outside point to the first solid point.
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - qx, y - qy) / 0.5));
+    let ox = qx;
+    let oy = qy;
+    for (let i = 1; i <= steps; i++) {
+      const ix = qx + ((x - qx) * i) / steps;
+      const iy = qy + ((y - qy) * i) / steps;
+      if (solid.isSolidAt(ix, iy)) {
+        const otx = Math.floor(ox / TILE_SIZE);
+        const oty = Math.floor(oy / TILE_SIZE);
+        const itx = Math.floor(ix / TILE_SIZE);
+        const ity = Math.floor(iy / TILE_SIZE);
+        const entered = solid.slopePush?.(ix, iy) ?? null;
+        if (entered !== null && otx === itx && oty === ity) {
+          // Crossed a slope's diagonal: out along its normal, depth measured for the point now.
+          const now = slope ?? entered;
+          return { nx: entered.nx, ny: entered.ny, depth: Math.max(0, now.depth) };
+        }
+        if (ity > oty) return { nx: 0, ny: -1, depth: y - ity * TILE_SIZE };
+        if (ity < oty) return { nx: 0, ny: 1, depth: (ity + 1) * TILE_SIZE - y };
+        if (itx > otx) return { nx: -1, ny: 0, depth: x - itx * TILE_SIZE };
+        if (itx < otx) return { nx: 1, ny: 0, depth: (itx + 1) * TILE_SIZE - x };
+        break;
+      }
+      ox = ix;
+      oy = iy;
+    }
+  }
+  if (slope !== null) return slope;
+  // Already inside: the nearest face with open space beyond it.
   const tx = Math.floor(x / TILE_SIZE);
   const ty = Math.floor(y / TILE_SIZE);
-  let depth = Infinity;
-  let nx = 0;
-  let ny = -1;
-  const slope = solid.slopePush?.(x, y) ?? null;
   const faces: [number, number, number, number, number][] = [
     [y - ty * TILE_SIZE, 0, -1, tx, ty - 1], // up
     [(ty + 1) * TILE_SIZE - y, 0, 1, tx, ty + 1], // down
     [x - tx * TILE_SIZE, -1, 0, tx - 1, ty], // left
     [(tx + 1) * TILE_SIZE - x, 1, 0, tx + 1, ty], // right
   ];
-  if (slope !== null) {
-    depth = slope.depth;
-    nx = slope.nx;
-    ny = slope.ny;
-  } else for (const [d, fx, fy, ntx, nty] of faces) {
-    if (d < depth && !solid.isSolidTile(ntx, nty)) {
-      depth = d;
-      nx = fx;
-      ny = fy;
+  let best = { nx: 0, ny: -1, depth: Infinity };
+  for (const [d, fx, fy, ntx, nty] of faces) {
+    if (d < best.depth && !solid.isSolidTile(ntx, nty)) best = { nx: fx, ny: fy, depth: d };
+  }
+  if (best.depth < Infinity) return best;
+  // Buried deep: the shortest way out along an axis.
+  for (let d = 1; d <= EXIT_SEARCH; d++) {
+    for (const [fx, fy] of [[0, -1], [-1, 0], [1, 0], [0, 1]] as const) {
+      if (!solid.isSolidAt(x + fx * d, y + fy * d)) return { nx: fx, ny: fy, depth: d };
     }
   }
-  if (depth === Infinity) depth = y - ty * TILE_SIZE; // buried: push up
+  return { nx: 0, ny: -1, depth: EXIT_SEARCH };
+}
 
-  // Velocity of the contact point and the effective mass along the normal.
+/**
+ * If the point s on the pole is inside the ground, push it out the way it
+ * came in: an impulse that stops it moving inward (with a little bounce),
+ * friction along the surface, and a positional correction (most of the
+ * depth, at once). The hands only feel this as the pole being moved: jam it
+ * and it's dragged out of them.
+ */
+function contactAt(b: PoleBody, prev: Pose, solid: SolidQuery, s: number, floorsFree: boolean): Contact | null {
+  const u = s - L / 2;
+  const rx = Math.cos(b.theta) * u;
+  const ry = Math.sin(b.theta) * u;
+  const x = b.cx + rx;
+  const y = b.cy + ry;
+  if (!solid.isSolidAt(x, y)) return null;
+  const qx = prev.cx + Math.cos(prev.theta) * u;
+  const qy = prev.cy + Math.sin(prev.theta) * u;
+  const { nx, ny, depth } = exitFor(solid, x, y, qx, qy);
+  if (floorsFree && ny < -0.5) return null;
+
+  const rn = rx * ny - ry * nx;
+  const kn = 1 + (rn * rn) / INERTIA;
+  // Position: move the pole so this point comes most of the way out.
+  const corr = Math.min(MAX_CORRECTION, cfg.contactBias * Math.max(0, depth)) / kn;
+  b.cx += nx * corr;
+  b.cy += ny * corr;
+  b.theta += (rn * corr) / INERTIA;
+
+  // Velocity of the contact point: stop it moving inward (a little bounce), with friction.
   const vx = b.vx - b.omega * ry;
   const vy = b.vy + b.omega * rx;
   const vn = vx * nx + vy * ny;
-  const rn = rx * ny - ry * nx;
-  const kn = 1 + (rn * rn) / INERTIA;
-  // Want to be separating at least as fast as the penetration needs (bias), with a little bounce.
-  const target = Math.max(-cfg.poleBounce * vn, (cfg.contactBias * depth) / h);
-  let jn = (target - vn) / kn;
-  if (jn <= 0) return null;
-  // Friction along the surface, limited by the normal impulse.
+  let jn = (Math.max(-cfg.poleBounce * vn, 0) - vn) / kn;
+  if (jn <= 0) return corr > 0.05 ? { x, y, ny, impulse: 0 } : null;
   const tx2 = -ny;
   const ty2 = nx;
   const vt = vx * tx2 + vy * ty2;
@@ -255,14 +315,14 @@ function contactAt(b: PoleBody, solid: SolidQuery, s: number, h: number): Contac
 }
 
 /** Runs every contact point once for a substep, accumulating into out/tally. */
-function collideAll(b: PoleBody, solid: SolidQuery, h: number, out: HoldResult, tally: { biggest: number; floor: number; wall: number }): void {
+function collideAll(b: PoleBody, prev: Pose, solid: SolidQuery, out: HoldResult, tally: { biggest: number; floor: number; wall: number }, exempt?: { from: number; to: number }): void {
   for (let s = 0; s <= L + 0.01; s += CONTACT_SPACING) {
-    const j = contactAt(b, solid, s, h);
+    const j = contactAt(b, prev, solid, s, exempt !== undefined && s >= exempt.from && s <= exempt.to);
     if (j === null) continue;
     out.contact += j.impulse;
     if (j.ny * j.ny >= 0.49) tally.floor += j.impulse;
     else tally.wall += j.impulse;
-    if (j.impulse > tally.biggest) {
+    if (j.impulse >= tally.biggest) {
       tally.biggest = j.impulse;
       out.contactX = j.x;
       out.contactY = j.y;
@@ -283,14 +343,15 @@ export function stepFreePole(b: PoleBody, solid: SolidQuery, dt: number, out: Ho
   out.contact = 0;
   const tally = { biggest: 0, floor: 0, wall: 0 };
   for (let i = 0; i < SUBSTEPS; i++) {
+    const pose: Pose = { cx: b.cx, cy: b.cy, theta: b.theta };
     b.vy += gravity.g * h;
     b.omega *= 1 - cfg.freeSpinDrag * h;
     b.cx += b.vx * h;
     b.cy += b.vy * h;
     b.theta += b.omega * h;
     // Two passes so a pole lying on the ground settles instead of jittering.
-    collideAll(b, solid, h, out, tally);
-    collideAll(b, solid, h, out, tally);
+    collideAll(b, pose, solid, out, tally);
+    collideAll(b, pose, solid, out, tally);
   }
   out.contactFloor = tally.floor >= tally.wall;
 }

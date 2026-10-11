@@ -1,5 +1,5 @@
 import { beam as beamCfg, body, carry as cfg, pole, run } from '../data/tuning';
-import { clearBeam, createBeam, resetBeamHistory, stepBeam, twang, type BeamHand, type BeamState } from './beam';
+import { clearBeam, createBeam, NODE_SPACING, resetBeamHistory, stepBeam, twang, type BeamHand, type BeamState } from './beam';
 import { createPoleBody, emptyHold, nearestOnPole, placePole, pointAt, stepFreePole, stepHeldPole, wrapAngle, type HoldResult, type PoleBody, type SolidQuery } from './poleBody';
 
 /**
@@ -213,8 +213,6 @@ export interface CarryInputs {
   swingRate: number;
   /** The level the pole lives in. */
   level: SolidQuery;
-  /** Whether the held pole collides with it (not during the committed plant drop). */
-  collide: boolean;
 }
 
 /**
@@ -273,7 +271,9 @@ export function stepCarry(c: CarryState, p: CarryInputs, dt: number): DropReason
       // During the plant the arms drive the drop (track its speed, extra strength).
       omega: p.swingRate * swingSign(c),
       grip: p.swingRate > 0 ? grip * cfg.plantStrength : grip,
-      ...(p.collide ? { solid: p.level } : {}),
+      solid: p.level,
+      // During the plant drop the lead side passes through floors (the plant check finds where it touched).
+      ...(p.swingRate > 0 ? { exempt: c.lead === 1 ? { from: handMid(c), to: L } : { from: 0, to: handMid(c) } } : {}),
     },
     dt,
     c.hold,
@@ -311,7 +311,30 @@ export function stepCarry(c: CarryState, p: CarryInputs, dt: number): DropReason
   // and turned with the body.
   for (let i = 0; i < 2; i++) beamHands[i]!.s = c.hands[i]!.s;
   stepBeam(c.beam, { anchorX: p.x + c.anchorDX, anchorY: p.y + c.anchorDY, sAnchor: handMid(c), aim: c.pole.theta, hands: beamHands }, dt);
+  keepBeamOutOfGround(c, p.level);
   return null;
+}
+
+/**
+ * The flexible pole's wobble can't bend it into the ground: a node whose
+ * bent position is inside it is pulled back toward the pole's straight line
+ * (where the pole body already keeps it out) and stops moving that way.
+ */
+function keepBeamOutOfGround(c: CarryState, level: SolidQuery): void {
+  const nx = -Math.sin(c.pole.theta);
+  const ny = Math.cos(c.pole.theta);
+  const y = c.beam.y;
+  const v = c.beam.v;
+  for (let i = 0; i < y.length; i++) {
+    const d = y[i]!;
+    if (Math.abs(d) < 0.25) continue;
+    const base = pointAt(c.pole, i * NODE_SPACING);
+    if (!level.isSolidAt(base.x + nx * d, base.y + ny * d)) continue;
+    let k = d;
+    for (let n = 0; n < 8 && Math.abs(k) > 0.25 && level.isSolidAt(base.x + nx * k, base.y + ny * k); n++) k *= 0.5;
+    y[i] = Math.abs(k) > 0.25 ? k : 0;
+    if (Math.sign(v[i]!) === Math.sign(d)) v[i] = 0;
+  }
 }
 
 /** Let go of the pole: it keeps whatever motion it has and becomes a free object. */

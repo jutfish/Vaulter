@@ -2,12 +2,14 @@ import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
 import { beam as beamCfg, body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
+import type { CarvedHint } from '../gameplay/hints';
 import { Tile } from '../gameplay/level';
 import { pointAt } from '../gameplay/poleBody';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
 import { Camera } from './Camera';
 import { ParticlePool } from './effects';
+import { ADVANCE, glyphCells, LINE_HEIGHT, textWidth } from './pixelFont';
 import { FRAME_H, FRAME_W, HANG_GRIP, type SpriteSet, type VaulterFrame } from './sprites';
 
 /** Everything the renderer needs from one simulation tick, so it can interpolate between two. */
@@ -40,6 +42,10 @@ interface Snapshot {
   beamY: Float64Array;
 }
 
+/** Hint text carved into the land: groove and its lit lower edge, and letters carved per second. */
+const CARVE_DARK = 0x3e281a;
+const CARVE_LIGHT = 0xa47452;
+const CARVE_RATE = 30;
 /** Slope colours, matching the grass/dirt tiles in tiles.png. */
 const DIRT = 0x7c5438;
 const GRASS = 0x5ca848;
@@ -107,6 +113,9 @@ export class WorldView {
   private readonly polePts = new Float64Array(beamCfg.nodes * 2);
   private readonly particles = new ParticlePool();
   private readonly flash = new Graphics();
+  /** Hints carved into the land, being carved letter by letter. */
+  private readonly hintLayer = new Container();
+  private readonly carvings: { hint: CarvedHint; g: Graphics; shown: number; drawn: number; total: number }[] = [];
   private prev: Snapshot;
   private curr: Snapshot;
   private runPhase = 0;
@@ -137,7 +146,7 @@ export class WorldView {
     const worldLayer = new Container();
     worldLayer.label = 'worldLayer';
     // Carried pole sits beside the body: back arm, pole, body, then the front arm reaching across to grip it.
-    worldLayer.addChild(this.levelSprite, this.markers(), flag, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.particles.container, this.flash);
+    worldLayer.addChild(this.levelSprite, this.hintLayer, this.markers(), flag, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.particles.container, this.flash);
     this.root.addChild(this.far, this.near, worldLayer);
 
     this.prev = this.curr = snapshot(world);
@@ -152,6 +161,52 @@ export class WorldView {
     const p = this.world.player;
     this.camera.update(p.x, p.y, p.vx, dt);
     for (const e of events) this.react(e);
+    this.stepCarvings(dt);
+  }
+
+  /** Starts carving a hint into the land (replacing one with the same id). */
+  carve(hint: CarvedHint): void {
+    const old = this.carvings.findIndex((c) => c.hint.id === hint.id);
+    if (old >= 0) this.carvings.splice(old, 1)[0]!.g.destroy();
+    const g = new Graphics();
+    this.hintLayer.addChild(g);
+    const total = hint.lines.reduce((n, l) => n + l.length, 0);
+    this.carvings.push({ hint, g, shown: 0, drawn: 0, total });
+  }
+
+  private stepCarvings(dt: number): void {
+    for (const c of this.carvings) {
+      if (c.drawn >= c.total) continue;
+      c.shown = Math.min(c.total, c.shown + CARVE_RATE * dt);
+      const n = Math.floor(c.shown);
+      if (n === c.drawn) continue;
+      c.drawn = n;
+      const at = this.drawCarving(c.g, c.hint, n);
+      if (at && n % 3 === 0) this.particles.dust(at.x, at.y, 1, 30);
+    }
+  }
+
+  /** Draws the first n characters of a hint, centred on hint.x; returns where the last one is. */
+  private drawCarving(g: Graphics, h: CarvedHint, n: number): { x: number; y: number } | null {
+    g.clear();
+    const level = this.world.level;
+    let left = n;
+    let last: { x: number; y: number } | null = null;
+    h.lines.forEach((line, li) => {
+      const x0 = Math.round(h.x - textWidth(line) / 2);
+      const y0 = h.y + li * LINE_HEIGHT;
+      for (let i = 0; i < line.length && left > 0; i++, left--) {
+        const cx = x0 + i * ADVANCE;
+        for (const [gx, gy] of glyphCells(line[i]!)) {
+          // Carved: a dark groove with a lit lower edge. Only into the land, never the sky.
+          if (!level.isSolidAt(cx + gx + 0.5, y0 + gy + 0.5)) continue;
+          g.rect(cx + gx, y0 + gy + 1, 1, 1).fill(CARVE_LIGHT);
+          g.rect(cx + gx, y0 + gy, 1, 1).fill(CARVE_DARK);
+        }
+        last = { x: cx + 1, y: y0 + 2 };
+      }
+    });
+    return last;
   }
 
   /** Re-sync after a restart (no interpolation from the old state). */

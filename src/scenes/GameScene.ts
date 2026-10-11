@@ -1,8 +1,10 @@
 import type { Renderer } from 'pixi.js';
 import { FixedStepLoop } from '../app/loop';
 import type { AudioEngine } from '../audio/AudioEngine';
+import { longRunHints, lostPoleHint } from '../data/hints';
 import { buildLongRun } from '../data/levels';
 import { MAX_FRAME_TIME, run, SIM_DT } from '../data/tuning';
+import { HintTracker } from '../gameplay/hints';
 import type { InputState } from '../gameplay/input';
 import type { GameEvent } from '../gameplay/player';
 import { World } from '../gameplay/world';
@@ -35,6 +37,8 @@ export class GameScene {
   private poleHitCooldown = 0;
   private saveWarned = false;
   private readonly levelId = 'long-run';
+  /** Stuck timers and carved hints: kept across restarts (the land remembers). */
+  readonly hints = new HintTracker(longRunHints, lostPoleHint);
 
   constructor(private readonly d: GameSceneDeps) {
     this.world = new World(buildLongRun());
@@ -50,6 +54,12 @@ export class GameScene {
       for (let i = 0; i < this.lastSteps; i++) {
         this.world.step(this.d.input.consume(), SIM_DT);
         this.view.onStep(SIM_DT, this.world.events);
+        if (!this.world.cleared) {
+          for (const h of this.hints.update(this.world.player, this.world.level, SIM_DT)) {
+            this.view.carve(h);
+            this.d.audio.play('plant', { volume: 0.35, rate: 0.6 });
+          }
+        }
         this.handleEvents(this.world.events);
       }
     }

@@ -63,6 +63,25 @@ angle, spin; gravity acts on it). The vaulter only acts on it through the hands:
   (`poleMassRatio`), so running with it costs nothing; drags, jams and big
   swings push you. On the ground the feet absorb pushes under `footHold`.
 
+### Strict contacts (v0.5)
+- Contact points every 2 px along the pole. A point inside the ground is
+  pushed back out **the way it came in** (the face or slope it crossed since
+  the last substep), not through the nearest face: before, a pole slid
+  lengthwise into a cliff (hands walking it) went more than half a tile in,
+  "nearest open face" was then the wrong side or none, and it stayed buried.
+- Position is corrected at once (`contactBias` 0.9 of the depth per
+  substep, at most 3 px per contact per substep so a deep one can't make the
+  pole jump), then the inward velocity is stopped (with `poleBounce`) and
+  friction applied. The hands then feel a pole that won't go where they
+  pull: it strains, slips or is yanked away.
+- During the plant drop the lead side still passes through *floors* (so the
+  plant check sees the tip touch down), but walls and ceilings stop it; any
+  shaft contact in the drop is a jam.
+- The flexible pole's drawn wobble is kept out of the ground too.
+- `npm run probe` (penetration probe, fuzzed play along the course): ticks
+  with the pole > 3 px in the ground went from 1.3% (carry) / 23% (plant
+  drop) to 0.00%; worst 4 px.
+
 ### Losing it (normal, not special-cased)
 - **Yanked:** pulled sideways out of the hands by more than `gripBreakStretch`.
 - **Pushed off the end:** slid through the hands past the pole's end.
@@ -193,6 +212,10 @@ hold   D80 D100 D120 D140 D160 D180  quality
 5. **Plant contact checked once per tick** — the tip drops ~7° per tick, so
    "contact near the tip" vs "mid-shaft jam" depended on where the step
    landed; a 2 px grip change made every plant jam. Now swept in 0.01 rad steps.
+6a. **Soft contacts (v3):** nearest-open-face push-out with a 30% velocity
+   bias per substep. The hands overpowered it and a point that went over half
+   a tile in was pushed toward the wrong face (or none): poles sank into
+   cliffs and slabs. Replaced by entry-face, positional contacts (v0.5).
 6. **Pole body with a plain spring for the arms and a torque cap near the
    pole's weight** (v3): arms at 30 000 vs 25 200 needed left no braking
    margin and the pole fell 72 deg past level. Now 60 000 with a brake-aware turn speed.

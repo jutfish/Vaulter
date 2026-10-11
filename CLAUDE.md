@@ -14,14 +14,15 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - Read `docs/design-intent.md` and `docs/vault-physics.md` at the start of any session that touches movement or the vault.
 
 ## Current state (2026-10-11)
-- **v0.3.0** (JT played it): pole as its own object. Liked it: more chaotic = more fun, more depth, harder in an old-school way (keep it).
-- **v0.4.0 built, awaiting JT's play** (2026-10-11): the **long run** (6720 px) replaces the first-wall level in the game. Warm-up wall, potholes 2–6 wide, rolling hills, plateau + 48 px wall, the **switchback** (cliff too tall to vault; two backwards vaults: onto a ledge, then onto an upper tier), long downslope into an 80 px wall, potholes, 64 px last wall. See `docs/level-design.md`.
-- New engine bits: 45° slope tiles (`/` `\`, feet walk the diagonal, `body.stepUp`, `run.slopeGravity`, pole + plant collide with slopes), `B` brick wall tiles, `CourseBuilder`, dev `__vaulter.teleport(col, facing)`.
-- Fixed on the way: hands' vertical speed on slopes (pole was yanked away running downhill); plant-surface lookup off by 0.01 px at tile tops.
-- Verified: 64 tests (incl. a scripted run that finishes the whole course with both backwards vaults), build OK, probes; screenshots of hills, switchback mid-backwards-vault and ledge landing, long slope + big wall, finish flag. Committed as 2c91210.
+- **v0.4.0** (JT played it, live at jutfish.github.io/Vaulter): the long run with slopes and the backwards-vault switchback. JT: fiddly to discover but very satisfying = exactly the vibe; game = discover what the pole can do, then execute; short, maybe one continuous level. Got past the switchback, not yet the big wall. Asked for: stricter pole contacts, hints carved in the land when stuck, a lost-pole hint.
+- **v0.5.0 built, awaiting JT's play** (2026-10-11, pushed and deployed):
+  1. strict pole contacts (`poleBody.ts`): out the way it came in, positional, 2 px spacing; plant drop collides with walls/ceilings; drawn wobble kept out of the ground. Penetration probe: >3 px ticks 1.3%/23% → 0.00%.
+  2. hints carved into the land (`gameplay/hints.ts`, `data/hints.ts`, `rendering/pixelFont.ts`), stuck timers per obstacle across restarts; lost-pole hint after 3 s. See `docs/level-design.md`.
+- Verified: 69 tests, build OK, probes (vault windows unchanged); screenshots of the carved cliff hints and the lost-pole hint. Browser-pane screenshots can show only the top-left quarter of the page magnified (pane DPR quirk, not a game bug): draw `__vaulter.snapshot()` into a 50vw x 50vh img to see it.
 
 ## Open items
-- JT's v0.4 play → tune the course: big wall (80 px) is the hardest obstacle (drop to 4 tiles if it's a wall of frustration); the 64 px last wall has a narrow window.
+- JT's v0.5 play → hint timings/wording, strictness feel; big wall (80 px) is the hardest obstacle (JT hadn't solved it yet).
+- Hint progress isn't saved between sessions (closing the tab resets stuck timers and carvings).
 - Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
 - `firstWall` level is still used by tests/probes only; no level select yet.
 - v3 carry tuning still open: `carry` in `src/data/tuning.ts` (weight = `armTorque`, swing = `rotOmega`/`rotVelocityGain`, hand-walk = `handMoveTime`, losing it = `gripBreakStretch`/`slipStretch`, pick-up = `grabReach`, flip = `leadFlipAngle`).
@@ -42,4 +43,4 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - Dev server: `npm.cmd run dev` → http://127.0.0.1:5180 (strictPort). Run it in a Terminal-panel tab so it persists; reuse it if already up (check `Get-NetTCPConnection -LocalPort 5180`).
 - Hosted: repo https://github.com/jutfish/Vaulter, game at https://jutfish.github.io/Vaulter/ — `.github/workflows/pages.yml` tests, builds and deploys on every push to `main` (build uses `base: './'`).
 - `npm.cmd test`, `npm.cmd run build`, `npm.cmd run preview` (port 5181), `npm.cmd run probe`, `npm.cmd run assets`.
-- Browser verification: the in-app browser pane throttles `requestAnimationFrame` when hidden. In dev builds use `window.__vaulter` (`await __vaulter.play()`, `__vaulter.hold(['right','aimRight'], 2)`, `__vaulter.state()`, `__vaulter.teleport(col)`) to drive the sim deterministically, then screenshot. `__vaulter.manual = false` hands control back to real frames. `__vaulter.snapshot(w, h, scale)` returns a PNG data URL of an upscaled crop of the 480×270 game image around the player; to look at it, put it in a full-viewport `<img>` and take a screenshot (the screenshot tool's zoom crops but never magnifies).
+- Browser verification: the in-app browser pane throttles `requestAnimationFrame` when hidden. In dev builds use `window.__vaulter` (`await __vaulter.play()`, `__vaulter.hold(['right','aimRight'], 2)`, `__vaulter.state()`, `__vaulter.teleport(col)`, `__vaulter.carveHints()`) to drive the sim deterministically, then screenshot. `__vaulter.manual = false` hands control back to real frames. `__vaulter.snapshot(w, h, scale)` returns a PNG data URL of an upscaled crop of the 480×270 game image around the player; to look at it, put it in a full-viewport `<img>` and take a screenshot (the screenshot tool's zoom crops but never magnifies).

@@ -147,8 +147,8 @@ export const carry = {
   poleBounce: 0.25,
   /** Friction coefficient of the pole on surfaces: high = the tip digs in and drags. */
   poleFriction: 0.8,
-  /** Fraction of a penetration corrected per substep (via velocity). */
-  contactBias: 0.3,
+  /** Fraction of a penetration corrected per substep, by moving the pole straight out (strict: near 1). */
+  contactBias: 0.9,
   /** Shoved along its length harder than the grip can hold, the pole slides through the hands
    *  once the hands lag the pole by more than this (px). */
   slipStretch: 5,
