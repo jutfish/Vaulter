@@ -2,6 +2,7 @@ import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
 import { beam as beamCfg, body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
+import { pointAt } from '../gameplay/poleBody';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
 import { Camera } from './Camera';
@@ -27,6 +28,11 @@ interface Snapshot {
   lean: number;
   bob: number;
   sMid: number;
+  /** The pole body: end 0 position and axis angle (continuous), arm strain. */
+  poleX0: number;
+  poleY0: number;
+  poleTheta: number;
+  strain: number;
   handS: [number, number];
   handT: [number, number];
   beamY: Float64Array;
@@ -37,18 +43,19 @@ const POLE_SHADE = 0xa08030;
 const SKIN = 0xf0bc8c;
 const SKIN_BACK = 0xc48c62;
 const OUTLINE = 0x18141c;
+/** Arm strain above which the carried pole visibly trembles. */
+const STRAIN_SHAKE = 0.75;
+
+function poleEnd0(b: Parameters<typeof pointAt>[0]): { poleX0: number; poleY0: number } {
+  const e = pointAt(b, 0);
+  return { poleX0: e.x, poleY0: e.y };
+}
+
 /** Shoulder position relative to the feet in the upright sprite (see the art script). */
 const SHOULDER = { x: 0, y: -21 };
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
-}
-
-function lerpAngle(a: number, b: number, t: number): number {
-  let d = b - a;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return a + d * t;
 }
 
 function snapshot(world: World): Snapshot {
@@ -61,6 +68,9 @@ function snapshot(world: World): Snapshot {
     lean: c.lean,
     bob: c.bob,
     sMid: handMid(c),
+    ...poleEnd0(c.pole),
+    poleTheta: c.pole.theta,
+    strain: c.strain,
     handS: [c.hands[0].s, c.hands[1].s],
     handT: [c.hands[0].t, c.hands[1].t],
     beamY: Float64Array.from(c.beam.y),
@@ -269,17 +279,16 @@ export class WorldView {
       this.setFrame(frame, facing);
     }
 
-    // The flexible pole: the straight line through the hands plus the simulated sideways deflection.
-    const aim = lerpAngle(a.aim, b.aim, alpha);
-    const dx = Math.cos(aim);
-    const dy = Math.sin(aim);
+    // The flexible pole: the pole body's own line plus the simulated sideways deflection.
+    // Straining arms make it tremble a little.
+    const theta = lerp(a.poleTheta, b.poleTheta, alpha);
+    const dx = Math.cos(theta);
+    const dy = Math.sin(theta);
     const nx = -dy;
     const ny = dx;
-    const ax = x + lerp(a.anchorDX, b.anchorDX, alpha);
-    const ay = y + lerp(a.anchorDY, b.anchorDY, alpha);
-    const sMid = lerp(a.sMid, b.sMid, alpha);
-    const bx = ax - dx * sMid;
-    const by = ay - dy * sMid;
+    const shake = b.strain > STRAIN_SHAKE ? Math.min(1.5, (b.strain - STRAIN_SHAKE) * 3) * Math.sin(performance.now() * 0.09) : 0;
+    const bx = lerp(a.poleX0, b.poleX0, alpha) + nx * shake;
+    const by = lerp(a.poleY0, b.poleY0, alpha) + ny * shake;
     const pts = this.polePts;
     for (let i = 0; i < beamCfg.nodes; i++) {
       const s = i * NODE_SPACING;

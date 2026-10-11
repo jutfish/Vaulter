@@ -35,6 +35,8 @@ export interface AttemptResult {
   quality: number;
   /** Highest feet height above ground during the attempt (px). */
   apex: number;
+  /** Hands-to-tip pole length the vault used (0 if no plant). */
+  plantLength: number;
   /** Lowest feet height (px above ground) while passing over [wallFromX, wallToX]. */
   wallClearance: number;
   cleared: boolean;
@@ -56,6 +58,7 @@ export function attemptVault(a: VaultAttempt, spec: FlatLevelSpec = firstWall, m
   let quality = 0;
   let apex = 0;
   let wallClearance = Infinity;
+  let plantLength = 0;
   const events: string[] = [];
   let t = 0;
   let afterRelease = 0;
@@ -72,7 +75,10 @@ export function attemptVault(a: VaultAttempt, spec: FlatLevelSpec = firstWall, m
     t += SIM_DT;
     for (const e of world.events) {
       events.push(e.type);
-      if (e.type === 'plant') plantedAt = t;
+      if (e.type === 'plant') {
+        plantedAt = t;
+        plantLength = world.player.vault?.length ?? 0;
+      }
       if (e.type === 'release') released = true;
       if (e.type === 'launch') {
         released = true;
@@ -94,6 +100,7 @@ export function attemptVault(a: VaultAttempt, spec: FlatLevelSpec = firstWall, m
     quality,
     apex,
     wallClearance: wallClearance === Infinity ? 0 : wallClearance,
+    plantLength,
     cleared: world.cleared,
     events,
   };

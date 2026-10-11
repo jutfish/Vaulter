@@ -99,7 +99,8 @@ export class App {
         const w = this.game?.world;
         if (!w) return null;
         const p = w.player;
-        return { x: p.x, y: p.y, vx: p.vx, vy: p.vy, pole: p.poleMode, cleared: w.cleared, lastVault: w.lastVault };
+        const cam = this.game!.view.camera;
+        return { x: p.x, y: p.y, vx: p.vx, vy: p.vy, pole: p.poleMode, cleared: w.cleared, lastVault: w.lastVault, camera: { x: cam.x, y: cam.y } };
       },
       /**
        * PNG data URL of a crop of the 480x270 game image, upscaled with nearest

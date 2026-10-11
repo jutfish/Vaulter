@@ -4,7 +4,8 @@ import { bendEnergy, startVault, stepVault, totalEnergy } from '../src/gameplay/
 import { attemptVault } from './helpers/sim';
 
 const WALL_X = 100 * 16; // firstWall: 3-tile (48 px) wall at column 100
-const PLANT_AT = WALL_X - 110;
+// Press Down this far before the wall (the plant drop takes ~0.07 s, so the pole lands ~20 px later).
+const PLANT_AT = WALL_X - 130;
 
 describe('vault physics', () => {
   it('conserves energy while held (before any bleed)', () => {

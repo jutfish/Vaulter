@@ -94,34 +94,48 @@ export const pole = {
   perfectThreshold: 0.8,
 };
 
-/** How the vaulter holds and carries the pole (v2: weight, lean, hands, aim inertia). */
+/** How the vaulter holds and carries the pole (v3: the pole is its own body, held by the hands). */
 export const carry = {
-  // --- Hands: hand-over-hand along the pole. Positions are px from the butt. ---
-  /** Midpoint between the hands when poised to vault (pole held out forward). grip-to-tip = totalLength - this. */
+  // --- Hands: hand-over-hand along the whole pole. Positions are px from end 0. ---
+  /** Hands' midpoint, measured from the far end, when extending the pole (a direction held). Lead length = totalLength - this. */
   gripVault: 4,
-  /** Midpoint between the hands in a relaxed carry (pole balanced, shorter lever). */
+  /** Hands' midpoint, measured from the far end, in a relaxed carry (no direction held). */
   gripCarry: 20,
   /** Distance between the two hands. */
   handGap: 7,
   /** Seconds for one hand to let go, pass the other hand and re-grip. */
-  handMoveTime: 0.1,
+  handMoveTime: 0.09,
   /** Pause between hand moves. */
-  handMovePause: 0.03,
-  /** How much a moving hand loosens its grip mid-move (0 = stays firm, 1 = lets go completely). */
-  handLoosen: 0.85,
+  handMovePause: 0.02,
   /** Once within a hand-gap of the target, the pole slides through both hands at this speed (px/s). */
   slideSpeed: 40,
-  /** The pole counts as "poised" (hands climb back) within this angle of horizontal. */
-  poisedAngle: (35 * Math.PI) / 180,
 
-  // --- Aim inertia: the pole is swung by a damped spring, slower when more of it sticks out. ---
-  /** Natural frequency of the aim spring (rad/s) with the hands at gripCarry. */
-  aimOmega: 16,
-  aimDamping: 0.85,
-  /** Upper limit on how fast the arms can swing the pole (rad/s). */
-  aimMaxSpeed: 11,
-  /** How hard the arms can accelerate the pole round (rad/s^2). Lower = heavier pole, gentler whip. */
-  aimMaxAccel: 40,
+  // --- Input: a direction means "point the long (lead) end this way". ---
+  /** Directions within this angle of the last commanded lead direction rotate the pole there
+   *  (so rolling Right, Up, Left arcs it over the top). Further away, the other end becomes the
+   *  lead and the hands work along the pole to it (Right straight to Left). */
+  leadFlipAngle: (102 * Math.PI) / 180,
+
+  // --- The hands' hold on the pole body (poleBody.ts). ---
+  /** Linear grip spring: natural frequency (rad/s) and damping ratio. */
+  handOmega: 40,
+  handDampingRatio: 0.9,
+  /** Max force the hands can apply (px/s^2 on the pole); jolts beyond it overpower the grip. */
+  handForceCap: 30000,
+  /** Max torque the arms can apply (px^2/s^2). Holding the pole level from one end needs
+   *  (totalLength/2 - gripVault) * g = 25200, ~42% of this; the rest is for swinging it. */
+  armTorque: 60000,
+  /** Close to the target the arms turn the pole at rotOmega x (angle error) rad/s; further away,
+   *  as fast as they can still brake from in time. */
+  rotOmega: 14,
+  /** How firmly the arms hold the turn speed they want (1/s). */
+  rotVelocityGain: 30,
+  /** How much a hand mid-move weakens the hold (0..1). */
+  moveWeakening: 0.25,
+  /** Arms' strength multiplier during the plant drop (a committed, explosive move). */
+  plantStrength: 2.5,
+  /** Pole mass / vaulter mass: how much swinging the pole pushes the vaulter around in the air. */
+  poleMassRatio: 0.06,
 
   // --- Lean: the pole's weight out front gradually tips the body forward. ---
   /** Max forward lean from the pole's weight (rad) when held horizontal with the hands at the butt. */
@@ -148,7 +162,7 @@ export const beam = {
   /** Number of simulated points along the pole. */
   nodes: 17,
   /** Tip wobble frequency (Hz) for the overhang with the hands fully back. Lower = wobblier. */
-  tipFrequency: 4.0,
+  tipFrequency: 3.5,
   /** Velocity damping (1/s): how fast the wobble dies down. */
   damping: 3.2,
   /** Extra damping of sharp kinks (s); smooths out jagged high-frequency ripples. */

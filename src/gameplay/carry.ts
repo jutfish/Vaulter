@@ -1,13 +1,18 @@
 import { beam as beamCfg, body, carry as cfg, pole, run } from '../data/tuning';
 import { clearBeam, createBeam, resetBeamHistory, stepBeam, twang, type BeamHand, type BeamState } from './beam';
+import { createPoleBody, placePole, stepHeldPole, wrapAngle, type HoldResult, type PoleBody } from './poleBody';
 
 /**
- * How the vaulter carries the pole between vaults: where the hands are on it
- * (hand-over-hand), how the pole's weight leans the body, the running bob, the
- * aim's inertia, and the flexible pole itself (beam.ts).
+ * How the vaulter carries the pole between vaults (v3). The pole is its own
+ * rigid body (poleBody.ts) held by two hands that sit at positions along it
+ * and move hand over hand. The player's direction input says which way the
+ * long ("lead") end should point; the arms twist the pole there within their
+ * strength, and the hands work along the pole to make that end long. The
+ * pole's weight leans the body, running bobs the shoulders, and the flexible
+ * pole (beam.ts) ripples on top.
  */
 export interface Hand {
-  /** Position along the pole from the butt (px). */
+  /** Position along the pole from end 0 (px). */
   s: number;
   /** Where a moving hand started and is going; equal when gripping. */
   from: number;
@@ -20,39 +25,60 @@ export interface CarryState {
   hands: [Hand, Hand];
   /** Time left before the next hand move may start. */
   movePause: number;
+  /** Which end the player wants long: 1 = end at s = totalLength, 0 = end at s = 0. */
+  lead: 0 | 1;
+  /** Direction the arms want the lead end to point (screen angle, continuous: not wrapped). */
+  leadCmd: number;
   /** Forward lean (rad, positive = toward facing direction) and its rate. */
   lean: number;
   leanVel: number;
   /** Vertical shoulder offset from the running bob (px, negative = up). */
   bob: number;
-  /** Angular velocity of the carried pole's aim (rad/s). */
-  aimVel: number;
-  /** Hand-midpoint position relative to the feet (px), updated every tick. */
+  /** Hands' target position relative to the feet (px), updated every tick. */
   anchorDX: number;
   anchorDY: number;
+  pole: PoleBody;
+  /** The hands' effect on the pole this tick (force, strain, stretch). */
+  hold: HoldResult;
+  /** Smoothed arm strain 0..1+ (for visuals/sound). */
+  strain: number;
   beam: BeamState;
   /** Number of completed hand moves (for tests/feedback). */
   handMoves: number;
 }
 
+const L = pole.totalLength;
+
 function hand(s: number): Hand {
   return { s, from: s, to: s, t: 1 };
 }
 
-export function createCarry(): CarryState {
-  const mid = cfg.gripCarry;
-  return {
-    hands: [hand(mid - cfg.handGap / 2), hand(mid + cfg.handGap / 2)],
+/** A fresh carry: relaxed grip, lead end (end 1) up and forward on the facing side. */
+export function createCarry(feetX = 0, feetY = 0, facing: 1 | -1 = 1): CarryState {
+  const c: CarryState = {
+    // Lead is end 1, so the relaxed grip sits gripCarry from end 0.
+    hands: [hand(cfg.gripCarry - cfg.handGap / 2), hand(cfg.gripCarry + cfg.handGap / 2)],
     movePause: 0,
+    lead: 1,
+    leadCmd: carryAngle(facing),
     lean: 0,
     leanVel: 0,
     bob: 0,
-    aimVel: 0,
-    anchorDX: 0,
+    anchorDX: cfg.handForward * facing,
     anchorDY: -body.gripHeight,
+    pole: createPoleBody(),
+    hold: { fx: 0, fy: 0, strain: 0, stretch: 0 },
+    strain: 0,
     beam: createBeam(),
     handMoves: 0,
   };
+  placePole(c.pole, handMid(c), feetX + c.anchorDX, feetY + c.anchorDY, c.leadCmd);
+  return c;
+}
+
+/** Neutral carry: lead end raised to pole.carryElevation, on the given side. */
+function carryAngle(side: number): number {
+  return side >= 0 ? -pole.carryElevation : -Math.PI + pole.carryElevation;
 }
 
 export const isGripping = (h: Hand): boolean => h.t >= 1;
@@ -62,47 +88,70 @@ export function handMid(c: CarryState): number {
   return (c.hands[0].s + c.hands[1].s) / 2;
 }
 
-/** Grip-to-tip length available for a vault right now. */
+/** Length from the hands to the lead end: what a vault would use right now. */
 export function reachOf(c: CarryState): number {
-  return pole.totalLength - handMid(c);
+  const m = handMid(c);
+  return c.lead === 1 ? L - m : m;
 }
 
-function wrap(a: number): number {
-  while (a > Math.PI) a -= 2 * Math.PI;
-  while (a < -Math.PI) a += 2 * Math.PI;
-  return a;
+/** Physical direction the lead end is pointing (screen angle, wrapped to ±PI). */
+export function leadAngle(c: CarryState): number {
+  return wrapAngle(leadAngleU(c));
 }
 
-/** Is the pole held out near-horizontal (either side)? Then the hands climb back to a vaulting grip. */
-export function isPoised(aim: number): boolean {
-  const off = Math.min(Math.abs(wrap(aim)), Math.abs(wrap(aim - Math.PI)));
-  return off <= cfg.poisedAngle;
+/** Same, continuous (matches the pole body's unwrapped theta). */
+function leadAngleU(c: CarryState): number {
+  return c.lead === 1 ? c.pole.theta : c.pole.theta + Math.PI;
 }
 
-/** Moment of inertia (per unit mass/length) of the pole about the hands. Grows as more pole sticks out. */
-function inertiaAbout(sMid: number): number {
-  const L = pole.totalLength;
-  return ((L - sMid) ** 3 + sMid ** 3) / 3;
+/** Pole-axis angle (continuous) that puts the lead end along the continuous direction `dir`. */
+function axisFor(c: CarryState, dir: number): number {
+  return c.lead === 1 ? dir : dir - Math.PI;
 }
-const INERTIA_REF = inertiaAbout(cfg.gripCarry);
+
+/** Moves the continuous command to `dir` by the shortest turn from `from`. */
+function turnTo(from: number, dir: number): number {
+  return from + wrapAngle(dir - from);
+}
 
 /**
- * Swings the carried pole toward `target` with a damped spring. More pole
- * sticking out past the hands = more inertia = a slower, heavier swing.
+ * Interprets the player's direction input (null = none held).
+ * A direction within leadFlipAngle of the last commanded lead direction
+ * rotates the pole to it; further away, the other end becomes the lead (the
+ * hands will work along to it) and that end rotates to the direction.
+ * No direction: the lead end relaxes up to the carry angle on its side.
  */
-export function stepAim(c: CarryState, aim: number, target: number, dt: number): number {
-  const omega = cfg.aimOmega * Math.sqrt(INERTIA_REF / inertiaAbout(handMid(c)));
-  const err = wrap(target - aim);
-  // Arms can only accelerate a heavy pole so hard: cap the angular acceleration.
-  let accel = omega * omega * err - 2 * cfg.aimDamping * omega * c.aimVel;
-  accel = Math.max(-cfg.aimMaxAccel, Math.min(cfg.aimMaxAccel, accel));
-  c.aimVel += accel * dt;
-  c.aimVel = Math.max(-cfg.aimMaxSpeed, Math.min(cfg.aimMaxSpeed, c.aimVel));
-  return wrap(aim + c.aimVel * dt);
+export function setIntent(c: CarryState, dir: number | null, facing: 1 | -1): void {
+  if (dir === null) {
+    const side = Math.cos(leadAngle(c));
+    c.leadCmd = turnTo(c.leadCmd, carryAngle(Math.abs(side) < 0.05 ? facing : side));
+    return;
+  }
+  if (Math.abs(wrapAngle(dir - c.leadCmd)) > cfg.leadFlipAngle) {
+    // The other end becomes the lead; it turns (at most ~80°) from where it physically is.
+    c.lead = c.lead === 1 ? 0 : 1;
+    c.leadCmd = turnTo(leadAngleU(c), dir);
+  } else {
+    c.leadCmd = turnTo(c.leadCmd, dir);
+  }
 }
 
-/** Hand-over-hand toward the grip the current aim calls for. */
-function stepHands(c: CarryState, aim: number, allowMoves: boolean, dt: number): void {
+/** Plant swing: the arms drive the lead end down toward the ground on its side. */
+export function setPlantSwing(c: CarryState, dropSpeed: number, dt: number): void {
+  const side = Math.cos(c.leadCmd) >= 0 ? 1 : -1;
+  const target = side > 0 ? Math.PI / 2 - 0.15 : Math.PI / 2 + 0.15;
+  const d = wrapAngle(target - c.leadCmd);
+  c.leadCmd += Math.sign(d) * Math.min(Math.abs(d), dropSpeed * dt);
+}
+
+/** Where the hands' midpoint should be along the pole: far from the lead end when a direction is held. */
+function gripTarget(c: CarryState, extending: boolean): number {
+  const fromFar = extending ? cfg.gripVault : cfg.gripCarry;
+  return c.lead === 1 ? fromFar : L - fromFar;
+}
+
+/** Hand-over-hand toward `target` (hands' midpoint, px from end 0). */
+function stepHands(c: CarryState, target: number, allowMoves: boolean, dt: number): void {
   const [a, b] = c.hands;
   for (const h of c.hands) {
     if (h.t < 1) {
@@ -118,14 +167,13 @@ function stepHands(c: CarryState, aim: number, allowMoves: boolean, dt: number):
   c.movePause = Math.max(0, c.movePause - dt);
   if (!allowMoves || !isGripping(a) || !isGripping(b) || c.movePause > 0) return;
 
-  const target = isPoised(aim) ? cfg.gripVault : cfg.gripCarry;
   const err = target - handMid(c);
   if (Math.abs(err) >= cfg.handGap * 0.75) {
     // Hand over hand: the hand furthest from the target lets go and re-grips past the other one.
-    const towardButt = err < 0;
-    const [near, far] = (towardButt ? a.s <= b.s : a.s >= b.s) ? [a, b] : [b, a];
+    const toward0 = err < 0;
+    const [near, far] = (toward0 ? a.s <= b.s : a.s >= b.s) ? [a, b] : [b, a];
     far.from = far.s;
-    far.to = Math.max(0.5, Math.min(pole.totalLength - 0.5, near.s + (towardButt ? -cfg.handGap : cfg.handGap)));
+    far.to = Math.max(0.5, Math.min(L - 0.5, near.s + (toward0 ? -cfg.handGap : cfg.handGap)));
     far.t = 0;
   } else if (Math.abs(err) > 0.05) {
     // Close enough: slide the pole through both hands to settle exactly.
@@ -142,25 +190,29 @@ export interface CarryInputs {
   x: number;
   y: number;
   vx: number;
+  vy: number;
   facing: 1 | -1;
   grounded: boolean;
-  aim: number;
+  /** A direction is held (hands extend toward the far end). */
+  extending: boolean;
   /** Stride phase 0..1 (distance into the current stride). */
   stridePhase: number;
   /** False while the tip is dropping to plant: hands stay put. */
   allowHandMoves: boolean;
+  /** Plant swing: how fast (rad/s) the arms are driving the lead end down; 0 otherwise. */
+  swingRate: number;
 }
 
 /**
- * One fixed tick of carrying: hands, lean, bob, then the flexible pole.
- * Call after the player has moved this tick.
+ * One fixed tick of carrying: hands, lean, bob, then the pole body and the
+ * flexible pole on top. Call after the player has moved this tick.
  */
 export function stepCarry(c: CarryState, p: CarryInputs, dt: number): void {
-  stepHands(c, p.aim, p.allowHandMoves, dt);
+  stepHands(c, gripTarget(c, p.extending), p.allowHandMoves, dt);
 
-  // Lean: the pole's weight in front of the hands tips the body, a little more the further it sticks out.
-  const half = pole.totalLength / 2;
-  const lever = ((half - handMid(c)) / (half - cfg.gripVault)) * Math.cos(p.aim) * p.facing;
+  // Lean: the pole's centre of mass out in front of the hands tips the body.
+  const ax = p.x + c.anchorDX;
+  const lever = ((c.pole.cx - ax) * p.facing) / (L / 2 - cfg.gripVault);
   const speedFrac = Math.min(1, Math.abs(p.vx) / run.maxSpeed);
   const target = cfg.leanFromPole * Math.max(-0.4, Math.min(1, lever)) + cfg.leanFromSpeed * speedFrac;
   const w = cfg.leanOmega;
@@ -175,20 +227,49 @@ export function stepCarry(c: CarryState, p: CarryInputs, dt: number): void {
   }
   c.bob = approachExp(c.bob, bobTarget, cfg.bobFollowRate, dt);
 
-  // Hands' midpoint relative to the feet: lean rotates the body about the feet.
+  // Hands' target relative to the feet: lean rotates the body about the feet.
   const rot = c.lean * p.facing;
   const lx = cfg.handForward * p.facing;
   const ly = -body.gripHeight;
+  const prevDX = c.anchorDX;
+  const prevDY = c.anchorDY;
   c.anchorDX = lx * Math.cos(rot) - ly * Math.sin(rot);
   c.anchorDY = lx * Math.sin(rot) + ly * Math.cos(rot) + c.bob;
 
-  for (let i = 0; i < 2; i++) {
-    const h = c.hands[i]!;
-    beamHands[i]!.s = h.s;
-    // A moving hand loosens and slides rather than letting go completely.
-    beamHands[i]!.grip = 1 - cfg.handLoosen * Math.sin(Math.PI * h.t);
-  }
-  stepBeam(c.beam, { anchorX: p.x + c.anchorDX, anchorY: p.y + c.anchorDY, sAnchor: handMid(c), aim: p.aim, hands: beamHands }, dt);
+  // The pole body, pulled and twisted by the hands.
+  // A hand mid-move weakens the hold a little (the other hand still has it).
+  let grip = 1;
+  for (const h of c.hands) grip = Math.min(grip, 1 - cfg.moveWeakening * Math.sin(Math.PI * h.t));
+  stepHeldPole(
+    c.pole,
+    {
+      x: p.x + c.anchorDX,
+      y: p.y + c.anchorDY,
+      vx: p.vx + (c.anchorDX - prevDX) / dt,
+      vy: p.vy + (c.anchorDY - prevDY) / dt,
+      sMid: handMid(c),
+      theta: axisFor(c, c.leadCmd),
+      // During the plant the arms drive the drop (track its speed, extra strength).
+      omega: p.swingRate * swingSign(c),
+      grip: p.swingRate > 0 ? grip * cfg.plantStrength : grip,
+    },
+    dt,
+    c.hold,
+  );
+  c.strain = approachExp(c.strain, c.hold.strain, 12, dt);
+
+  // The flexible pole: bending only (the body already does the rigid motion, so both
+  // hands always pin it). It's shaken by the hands' own motion, stride jolts and all,
+  // and turned with the body.
+  for (let i = 0; i < 2; i++) beamHands[i]!.s = c.hands[i]!.s;
+  stepBeam(c.beam, { anchorX: p.x + c.anchorDX, anchorY: p.y + c.anchorDY, sAnchor: handMid(c), aim: c.pole.theta, hands: beamHands }, dt);
+}
+
+/** Which way the plant swing turns the pole axis (lead end going down on its side). */
+function swingSign(c: CarryState): number {
+  // Right side: the lead angle increases toward +PI/2; left side it decreases.
+  // The axis is the lead direction (or that + PI), so it turns the same way.
+  return Math.cos(c.leadCmd) >= 0 ? 1 : -1;
 }
 
 /** Reused every tick (no per-tick allocation). */
@@ -197,17 +278,28 @@ const beamHands: BeamHand[] = [
   { s: 0, grip: 1 },
 ];
 
-/** The vaulter took the pole into a vault: the carried beam stops, the body straightens. */
+/** The vaulter took the pole into a vault: the carried beam stops. */
 export function onPlanted(c: CarryState): void {
   clearBeam(c.beam);
-  c.aimVel = 0;
 }
 
-/** The vaulter left the pole: it twangs from the release, the aim starts from rest where it is. */
-export function onLeftPole(c: CarryState): void {
+/**
+ * The vaulter left the pole at (gripX, gripY) moving at (vx, vy), the pole
+ * pointing at `leadDir`: the body is placed there, it twangs, and the arms
+ * start from where it is.
+ */
+export function onLeftPole(c: CarryState, gripX: number, gripY: number, leadDir: number, vx: number, vy: number): void {
+  c.leadCmd = leadDir;
+  placePole(c.pole, handMid(c), gripX, gripY, axisFor(c, leadDir), vx, vy);
+  // (leadDir is wrapped; the body restarts from it, so the continuous angles stay consistent.)
   resetBeamHistory(c.beam);
   twang(c.beam, handMid(c), beamCfg.launchTwang);
-  c.aimVel = 0;
   c.lean = 0;
   c.leanVel = 0;
+}
+
+/** Restart / teleport: put the pole back in the hands at rest. */
+export function resetPoleToHands(c: CarryState, feetX: number, feetY: number): void {
+  placePole(c.pole, handMid(c), feetX + c.anchorDX, feetY + c.anchorDY, axisFor(c, c.leadCmd));
+  clearBeam(c.beam);
 }

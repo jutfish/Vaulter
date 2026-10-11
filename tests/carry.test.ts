@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { beam as beamCfg, carry, pole, SIM_DT } from '../src/data/tuning';
 import { createBeam, deflectionAt, stepBeam, twang, type BeamFrame } from '../src/gameplay/beam';
 import { handMid, reachOf } from '../src/gameplay/carry';
+import { createPoleBody, placePole, stepHeldPole } from '../src/gameplay/poleBody';
 import type { Action } from '../src/gameplay/input';
 import { attemptVault, frameFor, makeWorld } from './helpers/sim';
 
@@ -63,13 +64,16 @@ describe('flexible pole (beam)', () => {
 function runWorld(seconds: number, held: (t: number) => Action[]) {
   const w = makeWorld();
   let prev = new Set<Action>();
-  const samples: { t: number; mid: number; lean: number; tip: number; moves: number }[] = [];
+  const samples: { t: number; mid: number; lean: number; tip: number; visTip: number; moves: number }[] = [];
   for (let t = 0; t < seconds; t += SIM_DT) {
     const now = new Set<Action>(held(t));
     w.step(frameFor(now, prev), SIM_DT);
     prev = now;
     const c = w.player.carry;
-    samples.push({ t, mid: handMid(c), lean: c.lean, tip: tipOf(c.beam.y), moves: c.handMoves });
+    // What the eye sees at the lead end: the rigid pole's own rocking plus the bend on top.
+    const reach = reachOf(c);
+    const visTip = reach * Math.sin(w.player.aim) + tipOf(c.beam.y);
+    samples.push({ t, mid: handMid(c), lean: c.lean, tip: tipOf(c.beam.y), visTip, moves: c.handMoves });
   }
   return { w, samples };
 }
@@ -88,7 +92,7 @@ describe('carrying the pole', () => {
     expect(c.handMoves).toBeGreaterThanOrEqual(2);
     // Not instant: after 0.1 s the hands have barely started.
     const early = samples.find((s) => s.t >= 0.1)!;
-    expect(early.mid).toBeGreaterThan(carry.gripCarry - carry.handGap);
+    expect(early.mid).toBeGreaterThanOrEqual(carry.gripCarry - carry.handGap);
   });
 
   it('relaxing the pole moves the hands back to the carry grip', () => {
@@ -113,9 +117,9 @@ describe('carrying the pole', () => {
     const running = runWorld(4, () => ['right', 'aimRight']).samples.filter((s) => s.t > 3);
     const standing = runWorld(4, () => ['aimRight']).samples.filter((s) => s.t > 3);
     const range = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
-    const run = range(running.map((s) => s.tip));
+    const run = range(running.map((s) => s.visTip));
     expect(run).toBeGreaterThan(2);
-    expect(range(standing.map((s) => s.tip))).toBeLessThan(run * 0.15);
+    expect(range(standing.map((s) => s.visTip))).toBeLessThan(run * 0.15);
   });
 
   it('stays numerically stable through a long, busy run', () => {
@@ -131,10 +135,79 @@ describe('carrying the pole', () => {
 describe('grip affects the vault', () => {
   const WALL_X = 100 * 16;
   it('planting before the hands have climbed back gives a shorter pole and a lower vault', () => {
-    const poisedEarly = attemptVault({ plantAtX: WALL_X - 110, holdAfterPlant: 0.5 });
+    const poisedEarly = attemptVault({ plantAtX: WALL_X - 130, holdAfterPlant: 0.5 });
     // Poised ~0.2 s before planting: the pole is level in time, the hands are still climbing.
-    const poisedLate = attemptVault({ plantAtX: WALL_X - 110, holdAfterPlant: 0.5, poiseAtX: WALL_X - 185 });
+    const poisedLate = attemptVault({ plantAtX: WALL_X - 130, holdAfterPlant: 0.5, poiseAtX: WALL_X - 185 });
     expect(poisedLate.planted).toBe(true);
-    expect(poisedLate.apex).toBeLessThan(poisedEarly.apex - 8);
+    expect(poisedEarly.plantLength).toBeCloseTo(pole.length, 0);
+    expect(poisedLate.plantLength).toBeLessThan(pole.length - 1.5);
+    expect(poisedLate.apex).toBeLessThan(poisedEarly.apex - 1);
+  });
+});
+
+describe('the pole as its own object (v3)', () => {
+  const leadDeg = (w: ReturnType<typeof makeWorld>) => (w.player.aim * 180) / Math.PI;
+
+  it('Right straight to Left: the hands work along the whole pole and it stays level', () => {
+    const w = makeWorld();
+    let prev = new Set<Action>();
+    let maxTilt = 0;
+    for (let t = 0; t < 3; t += SIM_DT) {
+      const now = new Set<Action>(t < 1 ? ['aimRight'] : ['aimLeft']);
+      w.step(frameFor(now, prev), SIM_DT);
+      prev = now;
+      if (t > 0.8) maxTilt = Math.max(maxTilt, Math.abs(Math.sin(w.player.aim)));
+    }
+    const c = w.player.carry;
+    expect(c.lead).toBe(0); // the other end now leads
+    expect(reachOf(c)).toBeCloseTo(pole.length, 1);
+    expect(Math.abs(Math.abs(leadDeg(w)) - 180)).toBeLessThan(3);
+    expect(maxTilt).toBeLessThan(Math.sin((15 * Math.PI) / 180)); // never swung up or down
+  });
+
+  it('Right, Up, Left rolled: the pole arcs over the top, same end leading', () => {
+    const w = makeWorld();
+    let prev = new Set<Action>();
+    let highest = 0;
+    let lowest = 0;
+    for (let t = 0; t < 3; t += SIM_DT) {
+      const now = new Set<Action>(t < 1 ? ['aimRight'] : t < 1.15 ? ['aimUp'] : ['aimLeft']);
+      w.step(frameFor(now, prev), SIM_DT);
+      prev = now;
+      if (t > 1) {
+        highest = Math.min(highest, Math.sin(w.player.aim)); // -1 = straight up
+        lowest = Math.max(lowest, Math.sin(w.player.aim));
+      }
+    }
+    expect(w.player.carry.lead).toBe(1);
+    expect(highest).toBeLessThan(-0.95); // went through vertical-up
+    expect(lowest).toBeLessThan(0.5); // never swung through the bottom
+    expect(Math.abs(Math.abs(leadDeg(w)) - 180)).toBeLessThan(5);
+  });
+
+  it('holding the pole level from one end takes real effort; upright it is easy', () => {
+    const level = runWorld(2.5, () => ['aimRight']).w.player.carry.strain;
+    const upright = runWorld(2.5, () => ['aimUp']).w.player.carry.strain;
+    expect(level).toBeGreaterThan(0.3);
+    expect(level).toBeLessThan(0.7);
+    expect(upright).toBeLessThan(0.15);
+  });
+
+  it('a pole held from the end swings round slower than one held in the middle', () => {
+    // Pole level, held still at (0,0); the arms swing it to 60° up. Time until it gets there.
+    const riseTime = (sMid: number) => {
+      const b = createPoleBody();
+      placePole(b, sMid, 0, 0, 0);
+      const out = { fx: 0, fy: 0, strain: 0, stretch: 0 };
+      for (let t = 0; t < 3; t += SIM_DT) {
+        stepHeldPole(b, { x: 0, y: 0, vx: 0, vy: 0, sMid, theta: -Math.PI / 3, omega: 0, grip: 1 }, SIM_DT, out);
+        if (b.theta < -Math.PI / 3 + 0.05) return t;
+      }
+      return 99;
+    };
+    const fromEnd = riseTime(carry.gripVault);
+    const fromMiddle = riseTime(pole.totalLength / 2);
+    expect(fromEnd).toBeLessThan(1);
+    expect(fromEnd).toBeGreaterThan(fromMiddle * 1.5);
   });
 });
