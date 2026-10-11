@@ -18,7 +18,7 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - **v0.4.0 built, awaiting JT's play** (2026-10-11): the **long run** (6720 px) replaces the first-wall level in the game. Warm-up wall, potholes 2–6 wide, rolling hills, plateau + 48 px wall, the **switchback** (cliff too tall to vault; two backwards vaults: onto a ledge, then onto an upper tier), long downslope into an 80 px wall, potholes, 64 px last wall. See `docs/level-design.md`.
 - New engine bits: 45° slope tiles (`/` `\`, feet walk the diagonal, `body.stepUp`, `run.slopeGravity`, pole + plant collide with slopes), `B` brick wall tiles, `CourseBuilder`, dev `__vaulter.teleport(col, facing)`.
 - Fixed on the way: hands' vertical speed on slopes (pole was yanked away running downhill); plant-surface lookup off by 0.01 px at tile tops.
-- Verified: 64 tests (incl. a scripted run that finishes the whole course with both backwards vaults), build OK, probes; screenshots of hills, switchback mid-backwards-vault and ledge landing, long slope + big wall, finish flag. Not committed yet.
+- Verified: 64 tests (incl. a scripted run that finishes the whole course with both backwards vaults), build OK, probes; screenshots of hills, switchback mid-backwards-vault and ledge landing, long slope + big wall, finish flag. Committed as 2c91210.
 
 ## Open items
 - JT's v0.4 play → tune the course: big wall (80 px) is the hardest obstacle (drop to 4 tiles if it's a wall of frustration); the 64 px last wall has a narrow window.
