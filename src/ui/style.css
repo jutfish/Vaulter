@@ -211,6 +211,43 @@ button.primary {
   opacity: 1;
 }
 
+/* Lost-pole count: big, centred, flashing in on every second (a boxing knock-down count). */
+#hud .count {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: clamp(64px, 18vw, 160px);
+  font-weight: bold;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+  pointer-events: none;
+}
+
+#hud .count.tick {
+  animation: count-tick 1s steps(1, end) forwards, count-pop 0.25s ease-out;
+}
+
+#hud .count.last {
+  color: var(--danger);
+}
+
+@keyframes count-tick {
+  0% { opacity: 1; }
+  60% { opacity: 1; }
+  70% { opacity: 0.25; }
+  80% { opacity: 1; }
+  90% { opacity: 0.25; }
+}
+
+@keyframes count-pop {
+  from { transform: translateY(-50%) scale(1.6); }
+  to { transform: translateY(-50%) scale(1); }
+}
+
 #hud .banner {
   position: absolute;
   left: 0;

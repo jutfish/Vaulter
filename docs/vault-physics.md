@@ -91,6 +91,12 @@ angle, spin; gravity acts on it). The vaulter only acts on it through the hands:
   hands grab where they meet it; the longer side leads.
 - A free pole falls, bounces, slides and settles (`stepFreePole`,
   `freeSpinDrag`). Without it Down does nothing; hop still works.
+- **The count (v0.6):** losing the pole starts a count (`poleTiers` in
+  tuning, `World.countPoleLoss`): 9 s, shown big and flashing mid-screen like
+  a boxing knock-down count. Pick it up in time and all's well; otherwise
+  the next pole appears in your hands and the lost one is gone. Gold, then
+  silver, then bronze, then black forever; black to black counts only 3 s.
+  R (restart) gives you gold again.
 
 Inspect with `npm run probe` (carry timelines incl. slide and arc; busy-run
 stability; slide-then-arc player trace; long-course vault windows).

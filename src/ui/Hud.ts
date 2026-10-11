@@ -10,6 +10,8 @@ export class Hud {
   private readonly toastEl = el('[data-role="toast"]', this.root);
   private readonly banner = el('[data-role="banner"]', this.root);
   private readonly mutedBadge = el('[data-role="muted-badge"]', this.root);
+  private readonly countEl = el('[data-role="count"]', this.root);
+  private shownCount: number | null = null;
   private toastTimer = 0;
   private lastVaultText = '';
 
@@ -28,6 +30,19 @@ export class Hud {
     this.banner.textContent = text ?? '';
   }
 
+  /** The lost-pole count: each new number pops in and flashes; null hides it. */
+  private showCount(n: number | null): void {
+    if (n === this.shownCount) return;
+    this.shownCount = n;
+    this.countEl.hidden = n === null;
+    if (n === null) return;
+    this.countEl.textContent = String(n);
+    this.countEl.classList.toggle('last', n <= 3);
+    this.countEl.classList.remove('tick');
+    void this.countEl.offsetWidth; // restart the animation
+    this.countEl.classList.add('tick');
+  }
+
   setMuted(muted: boolean): void {
     this.mutedBadge.hidden = !muted;
   }
@@ -44,6 +59,8 @@ export class Hud {
       this.vault.textContent = text;
       this.lastVaultText = text;
     }
+
+    this.showCount(world.poleCountdown === null ? null : Math.max(1, Math.ceil(world.poleCountdown)));
 
     if (this.toastTimer > 0) {
       this.toastTimer -= frameDt;

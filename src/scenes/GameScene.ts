@@ -3,7 +3,7 @@ import { FixedStepLoop } from '../app/loop';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { longRunHints, lostPoleHint } from '../data/hints';
 import { buildLongRun } from '../data/levels';
-import { MAX_FRAME_TIME, run, SIM_DT } from '../data/tuning';
+import { MAX_FRAME_TIME, poleTiers, run, SIM_DT } from '../data/tuning';
 import { HintTracker } from '../gameplay/hints';
 import type { InputState } from '../gameplay/input';
 import type { GameEvent } from '../gameplay/player';
@@ -36,6 +36,7 @@ export class GameScene {
   /** Time until the next pole-hit sound may play (scrapes would otherwise fire every tick). */
   private poleHitCooldown = 0;
   private saveWarned = false;
+  private lastCount: number | null = null;
   private readonly levelId = 'long-run';
   /** Stuck timers and carved hints: kept across restarts (the land remembers). */
   readonly hints = new HintTracker(longRunHints, lostPoleHint);
@@ -63,10 +64,19 @@ export class GameScene {
         this.handleEvents(this.world.events);
       }
     }
+    this.tickCount();
     this.view.render(paused ? 1 : this.loop.alpha, paused ? 0 : realDt);
     this.d.stage.renderWorld();
     this.d.hud.update(this.world, this.d.progress.value.bestHeight, realDt);
     this.d.dev.update(performance.now(), this.lastSteps, this.world);
+  }
+
+  /** A knock on each second of the lost-pole count. */
+  private tickCount(): void {
+    const c = this.world.poleCountdown;
+    const n = c === null ? null : Math.max(1, Math.ceil(c));
+    if (n !== null && n !== this.lastCount) this.d.audio.play('bonk', { volume: 0.45, rate: n <= 3 ? 1.5 : 1.2 });
+    this.lastCount = n;
   }
 
   restart(): void {
@@ -100,6 +110,11 @@ export class GameScene {
         case 'pickup':
           audio.play('plant', { volume: 0.5, rate: 1.4 });
           break;
+        case 'newPole': {
+          audio.play('plant', { volume: 0.7, rate: 1.2 });
+          this.d.hud.toast(`${poleTiers[e.tier]!.name.toUpperCase()} POLE`, 1.2);
+          break;
+        }
         case 'poleHit':
           if (this.poleHitCooldown > 0) break;
           this.poleHitCooldown = e.floor ? 0.09 : 0.15;

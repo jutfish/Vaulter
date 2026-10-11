@@ -1,5 +1,5 @@
 import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
-import { beam as beamCfg, body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { beam as beamCfg, body, pole, poleTiers, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
 import type { CarvedHint } from '../gameplay/hints';
@@ -49,8 +49,13 @@ const CARVE_RATE = 30;
 /** Slope colours, matching the grass/dirt tiles in tiles.png. */
 const DIRT = 0x7c5438;
 const GRASS = 0x5ca848;
-const POLE_COLOR = 0xf0d060;
-const POLE_SHADE = 0xa08030;
+/** Pole colour and its darker tip shade, by poleTiers name. */
+const POLE_COLORS: Record<string, { color: number; shade: number }> = {
+  gold: { color: 0xf0c838, shade: 0xa07818 },
+  silver: { color: 0xd4dbe2, shade: 0x8a949e },
+  bronze: { color: 0xc8803c, shade: 0x84501e },
+  black: { color: 0x2a2a30, shade: 0x5a5a64 },
+};
 const SKIN = 0xf0bc8c;
 const SKIN_BACK = 0xc48c62;
 const OUTLINE = 0x18141c;
@@ -162,6 +167,10 @@ export class WorldView {
     this.camera.update(p.x, p.y, p.vx, dt);
     for (const e of events) this.react(e);
     this.stepCarvings(dt);
+  }
+
+  private poleColor(): { color: number; shade: number } {
+    return POLE_COLORS[poleTiers[this.world.poleTier]!.name]!;
   }
 
   /** Starts carving a hint into the land (replacing one with the same id). */
@@ -367,11 +376,11 @@ export class WorldView {
     }
     g.moveTo(pts[0]!, pts[1]!);
     for (let i = 1; i < beamCfg.nodes; i++) g.lineTo(pts[i * 2]!, pts[i * 2 + 1]!);
-    g.stroke({ width: 2, color: POLE_COLOR, join: 'round' });
+    g.stroke({ width: 2, color: this.poleColor().color, join: 'round' });
     const last = (beamCfg.nodes - 1) * 2;
     g.moveTo(pts[last - 2]! + (pts[last]! - pts[last - 2]!) * 0.6, pts[last - 1]! + (pts[last + 1]! - pts[last - 1]!) * 0.6);
     g.lineTo(pts[last]!, pts[last + 1]!);
-    g.stroke({ width: 2, color: POLE_SHADE });
+    g.stroke({ width: 2, color: this.poleColor().shade });
 
     if (!showArms) return;
     // Arms: from the (leaning, bobbing) shoulder to each hand on the pole. Hand 0 is drawn behind the body.
@@ -429,9 +438,9 @@ export class WorldView {
     const mx = (px + gx) / 2 + dir * Math.cos(phi) * sag * 2;
     const my = (py + gy) / 2 + Math.sin(phi) * sag * 2;
     g.moveTo(px, py).quadraticCurveTo(mx, my, gx, gy);
-    g.stroke({ width: 2, color: POLE_COLOR });
+    g.stroke({ width: 2, color: this.poleColor().color });
     g.moveTo(px, py).lineTo(px + (mx - px) * 0.08, py + (my - py) * 0.08);
-    g.stroke({ width: 2, color: POLE_SHADE });
+    g.stroke({ width: 2, color: this.poleColor().shade });
   }
 
   private setFrame(frame: VaulterFrame, facing: number): void {

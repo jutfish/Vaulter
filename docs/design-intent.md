@@ -61,6 +61,13 @@ executing it. So:
 - The pole catching on things should be strict: it's a real object, so it
   hooks, jams and gets yanked away rather than sliding through the ground.
 
+## Gold, silver, bronze, black (v0.6)
+You start with a gold pole. Losing it isn't the end: a boxing-style
+knock-down count (9 s) gives you the chance to get it back. If you don't, a
+lesser pole appears in your hands: silver, then bronze, then plain black
+(unlimited, with a short 3 s count, since a long one would just annoy). The
+pole you carry is a quiet record of how cleanly you've played.
+
 ## Levels: shapes, not gimmicks (v0.4)
 Levels stay pure platforming. The variety comes from the shape of the ground
 and how the vaulter and pole meet it: slopes up and down (speed, pole

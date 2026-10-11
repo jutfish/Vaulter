@@ -18,10 +18,12 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - **v0.5.0 built, awaiting JT's play** (2026-10-11, pushed and deployed):
   1. strict pole contacts (`poleBody.ts`): out the way it came in, positional, 2 px spacing; plant drop collides with walls/ceilings; drawn wobble kept out of the ground. Penetration probe: >3 px ticks 1.3%/23% → 0.00%.
   2. hints carved into the land (`gameplay/hints.ts`, `data/hints.ts`, `rendering/pixelFont.ts`), stuck timers per obstacle across restarts; lost-pole hint after 3 s. See `docs/level-design.md`.
-- Verified: 69 tests, build OK, probes (vault windows unchanged); screenshots of the carved cliff hints and the lost-pole hint. Browser-pane screenshots can show only the top-left quarter of the page magnified (pane DPR quirk, not a game bug): draw `__vaulter.snapshot()` into a 50vw x 50vh img to see it.
+- **v0.6.0 built, awaiting JT's play** (pushed and deployed): gold → silver → bronze → black poles. Lose the pole → 9 s knock-down count (big, flashing, centre; HUD) → next pole in hand, old one gone; black→black 3 s; R = gold again. Logic in `World.countPoleLoss` (`poleTiers` in tuning), colours in WorldView, count in Hud. JT wrote "Gold" for the third pole; built as **Bronze** (medal order) — confirm. 74 tests, build OK; checked the count and the silver pole in the browser.
+- Verified (v0.5): 69 tests, build OK, probes (vault windows unchanged); screenshots of the carved cliff hints and the lost-pole hint. Browser-pane screenshots can show only the top-left quarter of the page magnified (pane DPR quirk, not a game bug): draw `__vaulter.snapshot()` into a 50vw x 50vh img to see it.
 
 ## Open items
 - JT's v0.5 play → hint timings/wording, strictness feel; big wall (80 px) is the hardest obstacle (JT hadn't solved it yet).
+- The lost-pole hint still says "press R to restart", which the new-pole count makes misleading: JT is rewording hints.
 - Hint progress isn't saved between sessions (closing the tab resets stuck timers and carvings).
 - Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
 - `firstWall` level is still used by tests/probes only; no level select yet.

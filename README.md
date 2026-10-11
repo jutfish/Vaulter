@@ -66,6 +66,10 @@ leads to the cliff top. Down the long slope at speed into the big wall (let
 go earlier than usual: faster run, earlier release), two more potholes, the
 last wall and the flag.
 
+**Lost your pole?** You have a count of 9 to get it back (S to pick it up).
+Miss it and the next pole appears in your hands: gold, then silver, then
+bronze, then black (black to black is a count of 3). R restarts with gold.
+
 **Stuck?** Keep trying: after a while at the same spot, a hint is carved
 into the land nearby.
 

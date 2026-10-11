@@ -184,6 +184,18 @@ export const carry = {
   handForward: 6,
 };
 
+/**
+ * The poles you're given in turn. Lose your pole and don't get it back before
+ * the count runs out (a nod to a boxing knock-down count) and the next one
+ * appears in your hands; the old one is gone. The last one repeats forever.
+ */
+export const poleTiers = [
+  { name: 'gold', countdown: 9 },
+  { name: 'silver', countdown: 9 },
+  { name: 'bronze', countdown: 9 },
+  { name: 'black', countdown: 3 },
+] as const;
+
 /** The carried pole as a flexible beam (visual + feel; vault physics uses the rigid line). */
 export const beam = {
   /** Number of simulated points along the pole. */

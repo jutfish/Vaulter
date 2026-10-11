@@ -18,6 +18,8 @@ export type GameEvent =
   | { type: 'drop'; reason: DropReason }
   /** The vaulter picked the pole up. */
   | { type: 'pickup' }
+  /** The count ran out: a new pole (poleTiers[tier]) appeared in the hands and the lost one is gone. */
+  | { type: 'newPole'; tier: number }
   /** The carried pole hit or scraped the level (floor = scraping a floor/ceiling, else a wall face). */
   | { type: 'poleHit'; x: number; y: number; strength: number; floor: boolean }
   /** Vaulter leaves the pole. tipped = held so long the pole fell over. */
