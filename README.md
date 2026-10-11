@@ -1,5 +1,7 @@
 # Vaulter
 
+**Play in your browser:** https://jutfish.github.io/Vaulter/ (rebuilt and published automatically on every push to `main`).
+
 A side-on pixel-art platformer about one thing: a physically simulated pole
 vault that feels right with only a few keys. See
 [docs/design-intent.md](docs/design-intent.md) for the feel we're after and

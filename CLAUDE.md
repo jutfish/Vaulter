@@ -40,5 +40,6 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 
 ## Commands
 - Dev server: `npm.cmd run dev` → http://127.0.0.1:5180 (strictPort). Run it in a Terminal-panel tab so it persists; reuse it if already up (check `Get-NetTCPConnection -LocalPort 5180`).
+- Hosted: repo https://github.com/jutfish/Vaulter, game at https://jutfish.github.io/Vaulter/ — `.github/workflows/pages.yml` tests, builds and deploys on every push to `main` (build uses `base: './'`).
 - `npm.cmd test`, `npm.cmd run build`, `npm.cmd run preview` (port 5181), `npm.cmd run probe`, `npm.cmd run assets`.
 - Browser verification: the in-app browser pane throttles `requestAnimationFrame` when hidden. In dev builds use `window.__vaulter` (`await __vaulter.play()`, `__vaulter.hold(['right','aimRight'], 2)`, `__vaulter.state()`, `__vaulter.teleport(col)`) to drive the sim deterministically, then screenshot. `__vaulter.manual = false` hands control back to real frames. `__vaulter.snapshot(w, h, scale)` returns a PNG data URL of an upscaled crop of the 480×270 game image around the player; to look at it, put it in a full-viewport `<img>` and take a screenshot (the screenshot tool's zoom crops but never magnifies).

@@ -6,6 +6,8 @@ export const DEV_PORT = 5180;
 export const PREVIEW_PORT = 5181;
 
 export default defineConfig({
+  // Relative asset paths so the build runs from any folder, e.g. GitHub Pages at /Vaulter/.
+  base: './',
   server: { host: '127.0.0.1', port: DEV_PORT, strictPort: true },
   preview: { host: '127.0.0.1', port: PREVIEW_PORT, strictPort: true },
   build: { target: 'es2022', sourcemap: true },
