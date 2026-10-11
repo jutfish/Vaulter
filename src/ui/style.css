@@ -1,0 +1,251 @@
+:root {
+  --ink: #f4efe6;
+  --ink-dim: #b9b2a6;
+  --panel: rgba(18, 16, 28, 0.82);
+  --accent: #f0d060;
+  --accent-ink: #1a1520;
+  --danger: #e06060;
+  --font: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #101018;
+  color: var(--ink);
+  font-family: var(--font);
+}
+
+#game canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  pointer-events: auto;
+  background: #101018;
+  overflow-y: auto;
+}
+
+.screen.dim {
+  background: rgba(10, 10, 16, 0.6);
+}
+
+.screen[hidden],
+#hud[hidden],
+#dev[hidden],
+[hidden] {
+  display: none !important;
+}
+
+.title {
+  font-size: clamp(36px, 9vw, 72px);
+  letter-spacing: 0.15em;
+  margin: 0;
+  color: var(--accent);
+  text-shadow: 4px 4px 0 #6a3a20;
+}
+
+.subtitle {
+  margin: 0 0 8px;
+  color: var(--ink-dim);
+  letter-spacing: 0.2em;
+}
+
+h2 {
+  margin: 0 0 6px;
+  letter-spacing: 0.1em;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+button {
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 18px;
+  color: var(--ink);
+  background: #2a2638;
+  border: 2px solid #4a4460;
+  cursor: pointer;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 16px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.controls dt {
+  color: var(--ink);
+  text-align: right;
+}
+
+.controls dd {
+  margin: 0;
+}
+
+.notice {
+  max-width: 420px;
+  font-size: 13px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(360px, 100%);
+}
+
+.row input[type='range'] {
+  flex: 1;
+}
+
+.row output {
+  width: 3ch;
+  text-align: right;
+}
+
+.bar {
+  width: min(320px, 80vw);
+  height: 12px;
+  border: 2px solid var(--ink);
+}
+
+.bar.small {
+  width: 120px;
+  height: 8px;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+}
+
+.loading-detail {
+  font-size: 12px;
+  color: var(--ink-dim);
+  min-height: 1em;
+}
+
+#hud {
+  position: absolute;
+  inset: 0;
+  font-size: 13px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+#hud .speed {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#hud .vault {
+  position: absolute;
+  right: 16px;
+  top: 12px;
+  text-align: right;
+  white-space: pre;
+}
+
+#hud .toast {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  text-align: center;
+  font-size: clamp(18px, 4vw, 32px);
+  font-weight: bold;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+#hud .toast.show {
+  opacity: 1;
+}
+
+#hud .banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 40%;
+  text-align: center;
+  font-size: clamp(16px, 3vw, 24px);
+  background: var(--panel);
+  padding: 10px;
+}
+
+#hud .muted-badge {
+  position: absolute;
+  left: 16px;
+  bottom: 12px;
+  color: var(--danger);
+}
+
+#dev {
+  position: absolute;
+  left: 16px;
+  top: 36px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+#dev pre {
+  margin: 0;
+  font: inherit;
+}
+
+#dev canvas {
+  display: block;
+  margin-top: 4px;
+  image-rendering: pixelated;
+}

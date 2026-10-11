@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vaulter</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <div id="ui">
+      <section id="screen-menu" class="screen" hidden>
+        <h1 class="title">VAULTER</h1>
+        <p class="subtitle">run &middot; plant &middot; bend &middot; fly</p>
+        <div class="buttons">
+          <button data-action="play" class="primary">Play</button>
+          <button data-action="settings">Settings</button>
+        </div>
+        <dl class="controls">
+          <dt>A / D</dt><dd>Run (hold to build speed)</dd>
+          <dt>W / Space</dt><dd>Hop</dd>
+          <dt>Arrows</dt><dd>Aim the pole</dd>
+          <dt>&darr; (pole forward)</dt><dd>Plant &middot; hold to bend &middot; release to vault</dd>
+          <dt>Esc / P</dt><dd>Pause</dd>
+          <dt>R</dt><dd>Restart</dd>
+          <dt>M</dt><dd>Mute</dd>
+        </dl>
+        <p class="notice" data-role="storage-notice" hidden></p>
+      </section>
+
+      <section id="screen-loading" class="screen" hidden>
+        <p class="loading-label">Loading&hellip;</p>
+        <div class="bar"><div class="bar-fill" data-role="loading-fill"></div></div>
+        <p class="loading-detail" data-role="loading-detail"></p>
+      </section>
+
+      <section id="screen-pause" class="screen dim" hidden>
+        <h2>Paused</h2>
+        <div class="buttons">
+          <button data-action="resume" class="primary">Resume</button>
+          <button data-action="restart">Restart</button>
+          <button data-action="settings">Settings</button>
+          <button data-action="quit">Main menu</button>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen dim" hidden>
+        <h2>Settings</h2>
+        <label class="row">Music <input type="range" min="0" max="100" step="1" data-setting="musicVolume" /><output data-out="musicVolume"></output></label>
+        <label class="row">Effects <input type="range" min="0" max="100" step="1" data-setting="sfxVolume" /><output data-out="sfxVolume"></output></label>
+        <label class="row check"><input type="checkbox" data-setting="muted" /> Mute all</label>
+        <label class="row check"><input type="checkbox" data-setting="pauseOnBlur" /> Pause when the window loses focus</label>
+        <p class="notice" data-role="settings-notice" hidden></p>
+        <div class="buttons"><button data-action="back" class="primary">Back</button></div>
+      </section>
+
+      <div id="hud" hidden>
+        <div class="speed"><span>SPEED</span><div class="bar small"><div class="bar-fill" data-role="speed-fill"></div></div></div>
+        <div class="vault" data-role="vault-readout"></div>
+        <div class="toast" data-role="toast"></div>
+        <div class="banner" data-role="banner" hidden></div>
+        <div class="muted-badge" data-role="muted-badge" hidden>MUTED</div>
+      </div>
+
+      <div id="dev" hidden>
+        <pre data-role="dev-text"></pre>
+        <canvas data-role="dev-graph" width="180" height="40"></canvas>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
