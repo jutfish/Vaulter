@@ -31,6 +31,18 @@ Visual style: crisp pixel art, readable silhouettes, side-on camera that follows
 - Javelin throw the pole to hit buttons or to drop it when it's a hindrance.
 - More pole moves taught as the game goes on.
 
+## The pole feels like a real object (v2, from JT's first playtest)
+JT liked v1's run-up, zoom, vault spring, air control, time trial and best
+height. The ask for v2: four digital buttons should *feel* analogue because the
+pole is physical, not animated.
+- It **wobbles naturally**: a ripple that starts at the hands with every stride's
+  rise and fall and travels to the tip, a bit wobblier than a real pole for fun.
+- **Where the hands are and how fast you run** change the wobble.
+- It has **weight**: held out in front, it slowly leans the body forward, more
+  the longer and further out it's held; it's slower to swing round.
+- **Hands move hand over hand** along the pole, and that matters: poise early
+  so the hands reach the end of the pole and you vault on the full length.
+
 ## Feedback the player must get
 - The pole visibly bends in proportion to stored energy.
 - A clear audio/visual cue at plant and at release, strongest at a perfect release.
