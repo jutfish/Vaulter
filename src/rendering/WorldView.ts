@@ -1,5 +1,7 @@
 import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
-import { body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { beam as beamCfg, body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { NODE_SPACING } from '../gameplay/beam';
+import { handMid } from '../gameplay/carry';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
 import { Camera } from './Camera';
@@ -19,12 +21,24 @@ interface Snapshot {
   phi: number;
   r: number;
   plantPhi: number;
+  /** Carry state (v2): hands' midpoint offset from the feet, lean, bob, hands along the pole, beam shape. */
+  anchorDX: number;
+  anchorDY: number;
+  lean: number;
+  bob: number;
+  sMid: number;
+  handS: [number, number];
+  handT: [number, number];
+  beamY: Float64Array;
 }
 
 const POLE_COLOR = 0xf0d060;
 const POLE_SHADE = 0xa08030;
-/** Visual offset of the hands from the body centre in carry frames (see the art script). */
-const HAND_FORWARD = 3;
+const SKIN = 0xf0bc8c;
+const SKIN_BACK = 0xc48c62;
+const OUTLINE = 0x18141c;
+/** Shoulder position relative to the feet in the upright sprite (see the art script). */
+const SHOULDER = { x: 0, y: -21 };
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -40,7 +54,16 @@ function lerpAngle(a: number, b: number, t: number): number {
 function snapshot(world: World): Snapshot {
   const p = world.player;
   const v = p.vault;
+  const c = p.carry;
   return {
+    anchorDX: c.anchorDX,
+    anchorDY: c.anchorDY,
+    lean: c.lean,
+    bob: c.bob,
+    sMid: handMid(c),
+    handS: [c.hands[0].s, c.hands[1].s],
+    handT: [c.hands[0].t, c.hands[1].t],
+    beamY: Float64Array.from(c.beam.y),
     x: p.x,
     y: p.y,
     aim: p.aim,
@@ -61,7 +84,11 @@ export class WorldView {
   private readonly near = new Graphics();
   private readonly levelSprite: Sprite;
   private readonly poleGfx = new Graphics();
+  private readonly armsBack = new Graphics();
+  private readonly armsFront = new Graphics();
   private readonly vaulter: Sprite;
+  /** Scratch buffer for the interpolated pole shape (no per-frame allocation). */
+  private readonly polePts = new Float64Array(beamCfg.nodes * 2);
   private readonly particles = new ParticlePool();
   private readonly flash = new Graphics();
   private prev: Snapshot;
@@ -93,7 +120,8 @@ export class WorldView {
 
     const worldLayer = new Container();
     worldLayer.label = 'worldLayer';
-    worldLayer.addChild(this.levelSprite, this.markers(), flag, this.poleGfx, this.vaulter, this.particles.container, this.flash);
+    // Carried pole sits beside the body: back arm, pole, body, then the front arm reaching across to grip it.
+    worldLayer.addChild(this.levelSprite, this.markers(), flag, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.particles.container, this.flash);
     this.root.addChild(this.far, this.near, worldLayer);
 
     this.prev = this.curr = snapshot(world);
@@ -185,10 +213,12 @@ export class WorldView {
   private drawVaulter(planted: boolean, x: number, y: number, alpha: number, frameDt: number): void {
     const p = this.world.player;
     const g = this.poleGfx.clear();
+    this.armsBack.clear();
+    this.armsFront.clear();
+    const a = this.prev;
+    const b = this.curr;
 
     if (planted) {
-      const a = this.prev;
-      const b = this.curr;
       const phi = lerp(a.phi, b.phi, alpha);
       const r = lerp(a.r, b.r, alpha);
       const dir = b.dir;
@@ -206,8 +236,11 @@ export class WorldView {
       return;
     }
 
-    // Off the pole.
     const facing = p.facing;
+    const lean = lerp(a.lean, b.lean, alpha);
+    const bob = Math.round(lerp(a.bob, b.bob, alpha));
+    let bodyRot = lean * facing;
+    let showArms = true;
     this.vaulter.anchor.set(0.5, 1);
     if (p.inVaultFlight && !p.grounded) {
       // Keep turning over toward feet-first for the landing.
@@ -218,10 +251,12 @@ export class WorldView {
       this.vaulter.position.set(Math.round(x), Math.round(y - FRAME_H * 0.4));
       this.vaulter.rotation = this.bodyRotation;
       this.setFrame(this.bodyRotation === 0 ? 'fall' : 'pike', facing);
+      showArms = this.bodyRotation === 0;
+      bodyRot = 0;
     } else {
       this.bodyRotation = 0;
-      this.vaulter.rotation = 0;
-      this.vaulter.position.set(Math.round(x), Math.round(y));
+      this.vaulter.rotation = bodyRot;
+      this.vaulter.position.set(Math.round(x), Math.round(y) + bob);
       let frame: VaulterFrame = 'idle';
       if (this.landTimer > 0) {
         this.landTimer -= frameDt;
@@ -234,21 +269,72 @@ export class WorldView {
       this.setFrame(frame, facing);
     }
 
-    // Carried pole: from just behind the hands out along the aim.
-    const aim = lerpAngle(this.prev.aim, this.curr.aim, alpha);
-    const hx = Math.round(x) + facing * HAND_FORWARD;
-    const hy = Math.round(y) - body.gripHeight;
-    const cx = Math.cos(aim);
-    const cy = Math.sin(aim);
-    g.moveTo(hx - cx * 8, hy - cy * 8).lineTo(hx + cx * pole.length, hy + cy * pole.length);
-    g.stroke({ width: 2, color: POLE_COLOR });
-    g.moveTo(hx + cx * (pole.length - 2), hy + cy * (pole.length - 2)).lineTo(hx + cx * pole.length, hy + cy * pole.length);
+    // The flexible pole: the straight line through the hands plus the simulated sideways deflection.
+    const aim = lerpAngle(a.aim, b.aim, alpha);
+    const dx = Math.cos(aim);
+    const dy = Math.sin(aim);
+    const nx = -dy;
+    const ny = dx;
+    const ax = x + lerp(a.anchorDX, b.anchorDX, alpha);
+    const ay = y + lerp(a.anchorDY, b.anchorDY, alpha);
+    const sMid = lerp(a.sMid, b.sMid, alpha);
+    const bx = ax - dx * sMid;
+    const by = ay - dy * sMid;
+    const pts = this.polePts;
+    for (let i = 0; i < beamCfg.nodes; i++) {
+      const s = i * NODE_SPACING;
+      const d = lerp(a.beamY[i]!, b.beamY[i]!, alpha);
+      pts[i * 2] = bx + dx * s + nx * d;
+      pts[i * 2 + 1] = by + dy * s + ny * d;
+    }
+    g.moveTo(pts[0]!, pts[1]!);
+    for (let i = 1; i < beamCfg.nodes; i++) g.lineTo(pts[i * 2]!, pts[i * 2 + 1]!);
+    g.stroke({ width: 2, color: POLE_COLOR, join: 'round' });
+    const last = (beamCfg.nodes - 1) * 2;
+    g.moveTo(pts[last - 2]! + (pts[last]! - pts[last - 2]!) * 0.6, pts[last - 1]! + (pts[last + 1]! - pts[last - 1]!) * 0.6);
+    g.lineTo(pts[last]!, pts[last + 1]!);
     g.stroke({ width: 2, color: POLE_SHADE });
+
+    if (!showArms) return;
+    // Arms: from the (leaning, bobbing) shoulder to each hand on the pole. Hand 0 is drawn behind the body.
+    const sx = Math.round(x) + SHOULDER.x * facing * Math.cos(bodyRot) - SHOULDER.y * Math.sin(bodyRot);
+    const sy = Math.round(y) + bob + SHOULDER.x * facing * Math.sin(bodyRot) + SHOULDER.y * Math.cos(bodyRot);
+    for (let h = 0; h < 2; h++) {
+      const s = lerp(a.handS[h]!, b.handS[h]!, alpha);
+      const t = b.handT[h]!;
+      const pos = this.pointOnPole(s);
+      // A moving hand lifts off the pole as it passes the other one.
+      const lift = t < 1 ? 2 * Math.sin(Math.PI * t) : 0;
+      const hx = pos.x;
+      const hy = pos.y - lift;
+      const gfx = h === 0 ? this.armsBack : this.armsFront;
+      const skin = h === 0 ? SKIN_BACK : SKIN;
+      gfx.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: 2, color: OUTLINE });
+      gfx.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: 1, color: skin });
+      // Fist: 3x3 with a dark rim so it reads against the pole.
+      const fx = Math.round(hx) - 1;
+      const fy = Math.round(hy) - 1;
+      gfx.rect(fx - 1, fy - 1, 4, 4).fill(OUTLINE);
+      gfx.rect(fx, fy, 2, 2).fill(skin);
+    }
+  }
+
+  /** World point on the drawn (interpolated, deflected) pole at distance s from the butt. */
+  private pointOnPole(s: number): { x: number; y: number } {
+    const pts = this.polePts;
+    const pos = Math.max(0, Math.min(beamCfg.nodes - 1.000001, s / NODE_SPACING));
+    const i = Math.floor(pos);
+    const w = pos - i;
+    return {
+      x: pts[i * 2]! * (1 - w) + pts[i * 2 + 2]! * w,
+      y: pts[i * 2 + 1]! * (1 - w) + pts[i * 2 + 3]! * w,
+    };
   }
 
   /** Pole as a bowed curve: chord r, arc ≈ pole length, bowing forward. */
   private drawBentPole(g: Graphics, px: number, py: number, gx: number, gy: number, phi: number, dir: number, r: number): void {
-    const sag = Math.sqrt(Math.max(0, (3 * r * (pole.length - r)) / 8));
+    const L = this.world.player.vault?.length ?? pole.length;
+    const sag = Math.sqrt(Math.max(0, (3 * r * (L - r)) / 8));
     const mx = (px + gx) / 2 + dir * Math.cos(phi) * sag * 2;
     const my = (py + gy) / 2 + Math.sin(phi) * sag * 2;
     g.moveTo(px, py).quadraticCurveTo(mx, my, gx, gy);

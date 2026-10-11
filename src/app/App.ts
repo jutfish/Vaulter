@@ -101,6 +101,28 @@ export class App {
         const p = w.player;
         return { x: p.x, y: p.y, vx: p.vx, vy: p.vy, pole: p.poleMode, cleared: w.cleared, lastVault: w.lastVault };
       },
+      /**
+       * PNG data URL of a crop of the 480x270 game image, upscaled with nearest
+       * neighbour. Default: 160x90 around the player at 6x. For visual checks.
+       */
+      snapshot: (w = 160, h = 90, scale = 6) => {
+        const pixels = this.pixi.renderer.extract.pixels(this.stage.target);
+        const src = document.createElement('canvas');
+        src.width = pixels.width;
+        src.height = pixels.height;
+        src.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels.pixels), pixels.width, pixels.height), 0, 0);
+        const view = this.game!.view.camera.viewOrigin(1);
+        const p = this.game!.world.player;
+        const x0 = Math.round(p.x - view.x - w / 2);
+        const y0 = Math.round(p.y - view.y - h * 0.7);
+        const out = document.createElement('canvas');
+        out.width = w * scale;
+        out.height = h * scale;
+        const ctx = out.getContext('2d')!;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(src, x0, y0, w, h, 0, 0, w * scale, h * scale);
+        return out.toDataURL('image/png');
+      },
     };
     (window as unknown as { __vaulter: typeof hook }).__vaulter = hook;
   }

@@ -68,16 +68,14 @@ def arm(d, x0: int, y0: int, x1: int, y1: int) -> None:
 
 
 def standing(d, legs) -> None:
-    """Upright body; feet on the bottom row (y=31), hands carry the pole near y=10."""
+    """Upright body; feet on the bottom row (y=31). Shoulder at about (8, 12)."""
     head(d, 6, 6)
     torso(d, 6, 10)
     shorts(d, 6, 17)
     for (x0, y0, x1, y1) in legs:
         leg(d, x0, y0, x1, y1)
         shoe(d, x1 - 1, y1 + 1 if y1 < 30 else 31)
-    # Arm reaching forward to the grip (hands at ~ (11, 10), 22 px above the feet).
-    arm(d, 10, 11, 11, 10)
-    px(d, 11, 10, SKIN_DARK)
+    # No arms: the game draws them live, reaching to wherever the hands are on the pole.
 
 
 def frame_idle(d):
@@ -136,7 +134,6 @@ def frame_land(d):
     leg(d, 8, 24, 11, 30)
     shoe(d, 4, 31)
     shoe(d, 10, 31)
-    arm(d, 10, 16, 12, 14)
 
 
 def outline(img: Image.Image) -> Image.Image:

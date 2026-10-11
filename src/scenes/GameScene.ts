@@ -28,7 +28,7 @@ export interface GameSceneDeps {
 /** The playable scene: fixed-step simulation + interpolated rendering + feedback. */
 export class GameScene {
   readonly world: World;
-  private readonly view: WorldView;
+  readonly view: WorldView;
   private readonly loop = new FixedStepLoop(SIM_DT, MAX_FRAME_TIME);
   private lastSteps = 0;
   private saveWarned = false;
