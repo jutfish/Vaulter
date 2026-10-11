@@ -10,28 +10,26 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 
 ## How to use this file
 - Current state, standing rules and open items only. Keep it short; replace "Current state", don't append.
-- Design/feel decisions → `docs/design-intent.md`. Physics model, tuning and rejected models → `docs/vault-physics.md`. Generated audio → `docs/audio-assets.md`.
+- Design/feel decisions → `docs/design-intent.md`. Physics model, tuning and rejected models → `docs/vault-physics.md`. Levels, tiles and timing windows → `docs/level-design.md`. Generated audio → `docs/audio-assets.md`.
 - Read `docs/design-intent.md` and `docs/vault-physics.md` at the start of any session that touches movement or the vault.
 
 ## Current state (2026-10-11)
-- **v0.1.0** (JT played it): liked run-up time/top speed, zoom, vault spring, hop/air control after the vault, time trial, best height. Visuals OK as placeholder for now.
-- **v0.2.0** (JT played it): liked the improvements; asked for the pole to be "a separate object the player manages"; wants losing the pole to feel normal, not situational.
-- **v0.3.0 built, awaiting JT's feel test** (2026-10-11), in four layers:
-  1. pole = own rigid body (`poleBody.ts`) held by a capped hand spring + capped arm couple (strain visible as tremble);
-  2. input = "point the long end here": rolling directions arcs it over; the opposite direction makes the other end lead and the hands work along the whole pole;
-  3. the carried pole collides with the level (drag, jam, slides through the hands); the vaulter feels only the excess force;
-  4. losing it: yanked / pushed off the end / bonk mid-vault / S to let go; a free pole falls and settles; S picks it up (stoop, scoop on the run).
-- Plant drop now ~20 px later than v2 (the arms drive it physically). Vault model unchanged; sweet spot about 0.5-0.55 s hold.
-- Verified: 59 tests, build OK; screenshots of slide, arc, wall shove, drop, settled pole.
+- **v0.3.0** (JT played it): pole as its own object. Liked it: more chaotic = more fun, more depth, harder in an old-school way (keep it).
+- **v0.4.0 built, awaiting JT's play** (2026-10-11): the **long run** (6720 px) replaces the first-wall level in the game. Warm-up wall, potholes 2–6 wide, rolling hills, plateau + 48 px wall, the **switchback** (cliff too tall to vault; two backwards vaults: onto a ledge, then onto an upper tier), long downslope into an 80 px wall, potholes, 64 px last wall. See `docs/level-design.md`.
+- New engine bits: 45° slope tiles (`/` `\`, feet walk the diagonal, `body.stepUp`, `run.slopeGravity`, pole + plant collide with slopes), `B` brick wall tiles, `CourseBuilder`, dev `__vaulter.teleport(col, facing)`.
+- Fixed on the way: hands' vertical speed on slopes (pole was yanked away running downhill); plant-surface lookup off by 0.01 px at tile tops.
+- Verified: 64 tests (incl. a scripted run that finishes the whole course with both backwards vaults), build OK, probes; screenshots of hills, switchback mid-backwards-vault and ledge landing, long slope + big wall, finish flag. Not committed yet.
 
 ## Open items
-- JT's v3 feel test → tune `carry` in `src/data/tuning.ts`: weight = `armTorque`, swing speed = `rotOmega`/`rotVelocityGain`, hand-walk speed = `handMoveTime`, how easily it's lost = `gripBreakStretch`/`slipStretch`, pick-up reach = `grabReach`, flip threshold = `leadFlipAngle`.
-- Next ideas from the design list: gamepad (stick = lead direction, half-circle arcs), javelin throw (release with velocity), pole-world puzzles (corridors), drag/strain sounds.
+- JT's v0.4 play → tune the course: big wall (80 px) is the hardest obstacle (drop to 4 tiles if it's a wall of frustration); the 64 px last wall has a narrow window.
+- Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
+- `firstWall` level is still used by tests/probes only; no level select yet.
+- v3 carry tuning still open: `carry` in `src/data/tuning.ts` (weight = `armTorque`, swing = `rotOmega`/`rotVelocityGain`, hand-walk = `handMoveTime`, losing it = `gripBreakStretch`/`slipStretch`, pick-up = `grabReach`, flip = `leadFlipAngle`).
+- Next ideas: gamepad (stick = lead direction), javelin throw, pole-world puzzles, drag/strain sounds, more levels + level select.
 - Connect ElevenLabs (official `elevenlabs-mcp` via `uvx`; key in agent config, never in repo), then propose prompts for approval.
-- Later: javelin-throw manoeuvre, more levels, gamepad, real art.
 
 ## Standing rules
-- **Feel first.** Any change to run/hop/vault must keep `tests/vault.test.ts` sweet-spot tests passing; run `npm run probe` and record the table in docs/vault-physics.md when tuning changes.
+- **Feel first.** Any change to run/hop/vault must keep `tests/vault.test.ts` sweet-spot tests and `tests/course.test.ts` (the course is still completable) passing; run `npm run probe` and record the tables in docs/vault-physics.md / docs/level-design.md when tuning changes.
 - All feel numbers live in `src/data/tuning.ts`; no magic numbers in gameplay code.
 - `src/gameplay/` stays pure (no Pixi, DOM or audio) so it's testable headless and deterministic.
 - Energy must be conserved by construction in vault.ts (compute before/after, never move `r` without paying for it) — see "Models tried and rejected".
@@ -43,4 +41,4 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 ## Commands
 - Dev server: `npm.cmd run dev` → http://127.0.0.1:5180 (strictPort). Run it in a Terminal-panel tab so it persists; reuse it if already up (check `Get-NetTCPConnection -LocalPort 5180`).
 - `npm.cmd test`, `npm.cmd run build`, `npm.cmd run preview` (port 5181), `npm.cmd run probe`, `npm.cmd run assets`.
-- Browser verification: the in-app browser pane throttles `requestAnimationFrame` when hidden. In dev builds use `window.__vaulter` (`await __vaulter.play()`, `__vaulter.hold(['right','aimRight'], 2)`, `__vaulter.state()`) to drive the sim deterministically, then screenshot. `__vaulter.manual = false` hands control back to real frames. `__vaulter.snapshot(w, h, scale)` returns a PNG data URL of an upscaled crop of the 480×270 game image around the player; to look at it, put it in a full-viewport `<img>` and take a screenshot (the screenshot tool's zoom crops but never magnifies).
+- Browser verification: the in-app browser pane throttles `requestAnimationFrame` when hidden. In dev builds use `window.__vaulter` (`await __vaulter.play()`, `__vaulter.hold(['right','aimRight'], 2)`, `__vaulter.state()`, `__vaulter.teleport(col)`) to drive the sim deterministically, then screenshot. `__vaulter.manual = false` hands control back to real frames. `__vaulter.snapshot(w, h, scale)` returns a PNG data URL of an upscaled crop of the 480×270 game image around the player; to look at it, put it in a full-viewport `<img>` and take a screenshot (the screenshot tool's zoom crops but never magnifies).

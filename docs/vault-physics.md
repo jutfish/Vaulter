@@ -74,7 +74,26 @@ angle, spin; gravity acts on it). The vaulter only acts on it through the hands:
   `freeSpinDrag`). Without it Down does nothing; hop still works.
 
 Inspect with `npm run probe` (carry timelines incl. slide and arc; busy-run
-stability; slide-then-arc player trace).
+stability; slide-then-arc player trace; long-course vault windows).
+
+### Slopes (v0.4)
+- 45° slope tiles. The body's feet walk the diagonal; `body.stepUp` (10 px)
+  steps onto lips where a slope meets the next tile (at a sprint the feet are
+  up to half the body width plus a tick's travel below it).
+- `run.slopeGravity` (200 px/s²) along a slope: uphill slows you, downhill
+  speeds you up, and overspeed doesn't decay while running downhill. It must
+  stay below `run.accelFromRest` (300) or you can't start up a slope from a
+  standstill (g/2 = 350 was tried: stuck at the foot of a hill).
+- The hands get the body's real vertical speed on slopes (the feet move by
+  snapping, so `vy` reads 0); without it the grip spring saw a yank running
+  downhill and the pole was lost every time.
+- Planting: the tip lands on the slope surface where it touches. Pressing ↓
+  while running down a slope onto the flat plants the pole almost level and
+  you fall back (physically right; the course leaves flat ground before walls).
+- The backwards vault: release early (0.25–0.35 s) and the launch is up and
+  back: ~64 px up, landing ~100–140 px behind the plant (hold the back
+  direction). Faster run-up (~410 px/s downhill) → release earlier (0.35–0.45 s
+  for an 80 px wall). Windows: `docs/level-design.md`.
 
 ## The model
 

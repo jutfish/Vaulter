@@ -35,10 +35,222 @@ export function buildFlatLevel(spec: FlatLevelSpec): LevelData {
   }
   for (const w of spec.walls) {
     for (let y = spec.groundRow - w.height; y < spec.groundRow; y++) {
-      for (let x = w.col; x < w.col + w.width; x++) grid[y]![x] = '#';
+      for (let x = w.col; x < w.col + w.width; x++) grid[y]![x] = 'B';
     }
   }
   grid[spec.groundRow - 1]![spec.startCol] = 'S';
   if (grid[0]![spec.finishCol] === '.') grid[0]![spec.finishCol] = 'F';
   return { name: spec.name, rows: grid.map((r) => r.join('')) };
+}
+
+/**
+ * Lays a level out left to right like a course: a cursor column and the
+ * current ground height (tiles above the base row). Each call adds that many
+ * columns. Heights are in tiles; earth fills down to the bottom of the level.
+ */
+export class CourseBuilder {
+  /** Next column to lay down. */
+  col = 0;
+  /** Ground height (tiles above the base row) at the cursor. */
+  h = 0;
+  private readonly grid: string[][];
+
+  constructor(
+    readonly name: string,
+    readonly cols: number,
+    readonly rows: number,
+    /** Row of the top tile of the ground at height 0. */
+    readonly baseRow: number,
+  ) {
+    this.grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => '.'));
+  }
+
+  /** Row index of the top ground tile at height h. */
+  topRow(h = this.h): number {
+    return this.baseRow - h;
+  }
+
+  private set(col: number, row: number, c: string): void {
+    if (col >= 0 && col < this.cols && row >= 0 && row < this.rows) this.grid[row]![col] = c;
+  }
+
+  private earth(col: number, fromRow: number): void {
+    for (let r = fromRow; r < this.rows; r++) this.set(col, r, '#');
+  }
+
+  flat(n: number): this {
+    for (let i = 0; i < n; i++) this.earth(this.col++, this.topRow());
+    return this;
+  }
+
+  /** Slope rising n tiles over n columns in the direction of travel. */
+  up(n: number): this {
+    for (let i = 0; i < n; i++) {
+      this.earth(this.col, this.topRow());
+      this.set(this.col++, this.topRow() - 1, '/');
+      this.h++;
+    }
+    return this;
+  }
+
+  /** Slope dropping n tiles over n columns. */
+  down(n: number): this {
+    for (let i = 0; i < n; i++) {
+      this.set(this.col, this.topRow(), '\\');
+      this.h--;
+      this.earth(this.col++, this.topRow());
+    }
+    return this;
+  }
+
+  /** Changes the ground height in one step: a cliff face (up) or a drop (down). */
+  cliff(dh: number): this {
+    this.h += dh;
+    return this;
+  }
+
+  /** A hole n wide and `depth` tiles deep. */
+  pit(n: number, depth: number): this {
+    for (let i = 0; i < n; i++) this.earth(this.col++, this.topRow() + depth);
+    return this;
+  }
+
+  /** A brick wall n wide and `height` tiles tall standing on the ground. */
+  wall(n: number, height: number): this {
+    for (let i = 0; i < n; i++) {
+      for (let r = this.topRow() - height; r < this.topRow(); r++) this.set(this.col, r, 'B');
+      this.earth(this.col++, this.topRow());
+    }
+    return this;
+  }
+
+  /** A floating slab over columns [from, to) whose top is `height` tiles above the base row. */
+  slab(from: number, to: number, height: number, thickness = 1, c = '#'): this {
+    for (let col = from; col < to; col++) for (let r = 0; r < thickness; r++) this.set(col, this.topRow(height) + r, c);
+    return this;
+  }
+
+  /** A brick post `height` tiles tall standing on a surface whose top is `onHeight` tiles above the base row. */
+  post(col: number, onHeight: number, height: number): this {
+    for (let r = 1; r <= height; r++) this.set(col, this.topRow(onHeight) - r, 'B');
+    return this;
+  }
+
+  /** Player start at the cursor (feet on the ground). */
+  start(): this {
+    this.set(this.col, this.topRow() - 1, 'S');
+    return this;
+  }
+
+  /** Finish line at the cursor. */
+  finish(): this {
+    this.set(this.col, 0, 'F');
+    return this;
+  }
+
+  build(): LevelData {
+    return { name: this.name, rows: this.grid.map((r) => r.join('')) };
+  }
+}
+
+/** Column landmarks of the long course (for tests and probes). */
+export interface LongRunMarks {
+  /** First column of each pothole on the base ground. */
+  potholes: number[];
+  hills: number;
+  /** Face of the plateau you vault up onto. */
+  plateau: number;
+  /** 48 px wall after the plateau. */
+  plateauWall: number;
+  /** The cliff (too tall to vault) and the switchback up to its top: a ledge over the ground
+   *  run-up and an upper tier over the ledge, each reached by a backwards vault. */
+  cliff: number;
+  cliffHeight: number;
+  ledgeFrom: number;
+  ledgeTo: number;
+  ledgeHeight: number;
+  /** The upper tier runs from here to the cliff top, at the cliff's height. */
+  tierFrom: number;
+  /** Post at the ledge's far end: too tall to vault onto the ledge from the ground. */
+  postHeight: number;
+  /** 80 px wall at the foot of the long slope down from the cliff top: needs the downhill speed. */
+  bigWall: number;
+  /** The last wall (64 px), just before the finish. */
+  lastWall: number;
+}
+
+/**
+ * The long course (v0.4): warm-up wall, potholes to hop at a sprint, rolling
+ * hills, a vault up onto a plateau, down its slope and over a wall, then a
+ * cliff too tall to vault. A backwards vault takes you up onto the ledge you
+ * ran under; run back along it and a second backwards vault takes you onto
+ * the upper tier over it, which leads to the cliff top. Down the long slope
+ * at speed into the big wall, two more potholes and the last wall.
+ */
+function layLongRun(): { data: LevelData; marks: LongRunMarks } {
+  const b = new CourseBuilder('Long run', 420, 34, 28);
+  const potholes: number[] = [];
+  const pothole = (n: number) => {
+    potholes.push(b.col);
+    b.pit(n, 1);
+  };
+  // Left boundary and the run-up.
+  b.wall(1, 14).flat(3).start().flat(52);
+  // Warm-up wall (32 px), then room to get back up to speed.
+  b.wall(2, 2).flat(24);
+  // Potholes, widening: hop them at a sprint (too slow or too early a hop and you're in the hole).
+  pothole(2);
+  b.flat(8);
+  pothole(3);
+  b.flat(8);
+  pothole(4);
+  b.flat(9);
+  pothole(5);
+  b.flat(9);
+  pothole(6);
+  b.flat(12);
+  // Rolling hills.
+  const hills = b.col;
+  b.up(2).flat(3).down(2).flat(3).up(3).flat(2).down(3).flat(4).up(1).down(1).flat(2).up(1).down(1).flat(6);
+  // Run-up, vault onto a plateau (48 px), down its far side and get back up to speed for a 48 px wall.
+  b.flat(18);
+  const plateau = b.col;
+  b.cliff(3).flat(16).down(3).flat(30);
+  const plateauWall = b.col;
+  b.wall(2, 3);
+  // The cliff: too tall to vault from the ground. Switchback up: run right under the ledge,
+  // vault backwards onto it; run left along it under the tier, vault backwards onto the tier.
+  const cliff = b.col + 70;
+  const cliffHeight = 8;
+  const ledgeHeight = 4;
+  const postHeight = 3;
+  const ledgeFrom = cliff - 54;
+  const ledgeTo = cliff - 7;
+  const tierFrom = cliff - 34;
+  b.flat(cliff - b.col).cliff(cliffHeight).flat(10).down(cliffHeight);
+  b.slab(ledgeFrom, ledgeTo, ledgeHeight);
+  b.post(ledgeFrom, ledgeHeight, postHeight);
+  b.slab(tierFrom, cliff, cliffHeight);
+  // Down the long slope at speed into the big wall (80 px), then potholes and the last wall (64 px).
+  b.flat(8);
+  const bigWall = b.col;
+  b.wall(2, 5).flat(11);
+  pothole(4);
+  b.flat(7);
+  pothole(5);
+  b.flat(16);
+  const lastWall = b.col;
+  b.wall(2, 4).flat(6).finish().flat(b.cols - 1 - b.col);
+  b.wall(1, 14);
+  return {
+    data: b.build(),
+    marks: { potholes, hills, plateau, plateauWall, cliff, cliffHeight, ledgeFrom, ledgeTo, ledgeHeight, tierFrom, postHeight, bigWall, lastWall },
+  };
+}
+
+const longRun = layLongRun();
+export const longRunMarks: LongRunMarks = longRun.marks;
+
+export function buildLongRun(): LevelData {
+  return longRun.data;
 }

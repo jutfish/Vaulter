@@ -43,6 +43,20 @@ pole is physical, not animated.
 - **Hands move hand over hand** along the pole, and that matters: poise early
   so the hands reach the end of the pole and you vault on the full length.
 
+## Chaos and difficulty are features (v3 playtest, 2026-10-11)
+JT on v0.3: the physical pole makes play more chaotic, and that's more fun;
+the controls have more depth; it's harder, like old-school games, and that's
+good. So: keep the pole's mess (scrapes, jams, losing it) and let skill be
+learning to manage it. Don't smooth it away to make things easier.
+
+## Levels: shapes, not gimmicks (v0.4)
+Levels stay pure platforming. The variety comes from the shape of the ground
+and how the vaulter and pole meet it: slopes up and down (speed, pole
+digging in), potholes hopped at a sprint, low ceilings (pole level),
+plateaus to vault onto, cliffs to get round. The backwards vault (release
+early, fly up and back) is a real move: levels can need it. See
+`docs/level-design.md`.
+
 ## Feedback the player must get
 - The pole visibly bends in proportion to stored energy.
 - A clear audio/visual cue at plant and at release, strongest at a perfect release.

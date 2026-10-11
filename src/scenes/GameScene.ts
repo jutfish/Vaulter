@@ -1,7 +1,7 @@
 import type { Renderer } from 'pixi.js';
 import { FixedStepLoop } from '../app/loop';
 import type { AudioEngine } from '../audio/AudioEngine';
-import { buildFlatLevel, firstWall } from '../data/levels';
+import { buildLongRun } from '../data/levels';
 import { MAX_FRAME_TIME, run, SIM_DT } from '../data/tuning';
 import type { InputState } from '../gameplay/input';
 import type { GameEvent } from '../gameplay/player';
@@ -34,10 +34,10 @@ export class GameScene {
   /** Time until the next pole-hit sound may play (scrapes would otherwise fire every tick). */
   private poleHitCooldown = 0;
   private saveWarned = false;
-  private readonly levelId = 'first-wall';
+  private readonly levelId = 'long-run';
 
   constructor(private readonly d: GameSceneDeps) {
-    this.world = new World(buildFlatLevel(firstWall));
+    this.world = new World(buildLongRun());
     this.view = new WorldView(d.renderer, this.world, d.sprites);
     d.stage.world.addChild(this.view.root);
     d.hud.show(true);

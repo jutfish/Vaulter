@@ -1,4 +1,4 @@
-import { body, carry as carryCfg, gravity, hop, pole, run, TILE } from '../data/tuning';
+import { body, carry as carryCfg, gravity, hop, pole, run } from '../data/tuning';
 import { createCarry, dropPole, grabPole, leadAngle, onLeftPole, onPlanted, reachOf, setIntent, setPlantSwing, stepCarry, type CarryState, type DropReason } from './carry';
 import type { ActionFrame } from './input';
 import { Level, moveBox, type Rect } from './level';
@@ -35,6 +35,8 @@ export interface Player {
   vy: number;
   facing: 1 | -1;
   grounded: boolean;
+  /** Slope under the feet: +1 rising to the right, -1 rising to the left, 0 flat or airborne. */
+  slope: number;
   coyote: number;
   hopBuffer: number;
   hopHeld: boolean;
@@ -62,6 +64,7 @@ export function createPlayer(x: number, y: number): Player {
     vy: 0,
     facing: 1,
     grounded: true,
+    slope: 0,
     coyote: 0,
     hopBuffer: 0,
     hopHeld: false,
@@ -147,7 +150,8 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
         const t = speed / run.maxSpeed;
         const accel = run.accelFromRest + (run.accelAtMax - run.accelFromRest) * t;
         p.vx = moveDir * Math.min(run.maxSpeed, speed + accel * dt);
-      } else {
+      } else if (p.slope !== -moveDir) {
+        // Overspeed bleeds away, except while running downhill (the slope keeps feeding it).
         p.vx = moveDir * Math.max(run.maxSpeed, speed - run.overspeedDecay * dt);
       }
     } else if (moveDir !== 0) {
@@ -208,7 +212,8 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   const box = playerBox(p);
   const wasGrounded = p.grounded;
   const fallSpeed = p.vy;
-  const res = moveBox(level, box, p.vx * dt, p.vy * dt);
+  const yBefore = p.y;
+  const res = moveBox(level, box, p.vx * dt, p.vy * dt, { grounded: wasGrounded, stepUp: body.stepUp });
   p.x = box.x + box.w / 2;
   p.y = box.y + box.h;
   if (res.hitX) {
@@ -217,12 +222,16 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   }
   if (res.hitY) p.vy = 0;
   p.grounded = res.grounded && p.vy >= 0;
+  p.slope = p.grounded ? res.slope : 0;
 
   if (p.inVaultFlight) p.vaultApexY = Math.min(p.vaultApexY, p.y);
   if (p.grounded && !wasGrounded) {
     events.push({ type: 'land', speed: fallSpeed });
     p.inVaultFlight = false;
   }
+
+  // On a slope gravity pulls along it: running downhill gains speed (past top speed), uphill costs it.
+  if (p.slope !== 0) p.vx -= p.slope * run.slopeGravity * dt;
 
   if (p.grounded && moveDir !== 0) {
     p.strideDistance += Math.abs(p.vx) * dt;
@@ -238,7 +247,8 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       x: p.x,
       y: p.y,
       vx: p.vx,
-      vy: p.vy,
+      // On the ground the feet follow slopes and steps by snapping, so the hands' real vertical speed is the move.
+      vy: p.grounded && wasGrounded ? (p.y - yBefore) / dt : p.vy,
       facing: p.facing,
       grounded: p.grounded,
       extending: dir !== null || p.poleMode === 'swing',
@@ -298,22 +308,29 @@ function checkPlantContact(p: Player, level: Level, leadBefore: number, events: 
 
   const grip = gripOf(p);
   const L = reach(p);
-  const tileTop = Math.floor(hit.y / TILE) * TILE;
+  const top = level.surfaceAt(hit.x, hit.y);
   const nearTip = hit.d >= L - PLANT_TIP_ZONE;
-  const sin = (tileTop - grip.y) / L;
-  if (nearTip && grip.y < tileTop && sin <= 1 && !level.isSolidAt(hit.x, tileTop - 1)) {
-    // The lead end came down onto a top surface: plant exactly where it touches.
-    const exact = side > 0 ? Math.asin(sin) : Math.PI - Math.asin(sin);
-    if (firstSolidAlongPole(p, level, exact, L - 1) === null) {
+  if (nearTip && grip.y < top && (top - grip.y) / L <= 1 && !level.isSolidAt(hit.x, top - 1)) {
+    // The lead end came down onto a top surface (flat or slope): plant exactly where it touches.
+    let tipX = hit.x;
+    let tipY = top;
+    let exact = p.aim;
+    for (let i = 0; i < 4; i++) {
+      // On a slope the surface height depends on where the tip lands: a few fixed-point steps.
+      const sin = Math.min(1, (tipY - grip.y) / L);
+      exact = side > 0 ? Math.asin(sin) : Math.PI - Math.asin(sin);
+      tipX = grip.x + Math.cos(exact) * L;
+      tipY = level.surfaceAt(tipX, Math.max(tipY, hit.y) + 0.01);
+    }
+    if (tipY > grip.y && firstSolidAlongPole(p, level, exact, L - 1) === null) {
       p.aim = exact;
-      const tipX = grip.x + Math.cos(exact) * L;
-      p.vault = startVault(tipX, tileTop, grip.x, grip.y, p.vx, p.vy, L);
+      p.vault = startVault(tipX, tipY, grip.x, grip.y, p.vx, p.vy, L);
       onPlanted(p.carry);
       p.poleMode = 'planted';
       p.grounded = false;
       p.hopHeld = false;
       p.vaultStartX = p.x;
-      events.push({ type: 'plant', x: tipX, y: tileTop });
+      events.push({ type: 'plant', x: tipX, y: tipY });
       return;
     }
   }

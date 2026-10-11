@@ -20,6 +20,10 @@ export const body = {
   /** Collision box while on the pole, measured from the grip (legs swing free). */
   vaultBoxAbove: 4,
   vaultBoxBelow: 10,
+  /** Tallest lip (px) the feet step up onto while running. Where a 45-degree slope meets the next
+   *  tile the feet are up to half the body width plus a tick's travel below it; under 16 so a
+   *  one-tile block is still a wall. */
+  stepUp: 10,
 };
 
 export const run = {
@@ -34,6 +38,10 @@ export const run = {
   /** Above maxSpeed (e.g. after a vault landing) speed bleeds at this rate. */
   overspeedDecay: 400,
   airAccel: 220,
+  /** Pull along a 45-degree slope while on it (px/s^2): downhill adds speed, even past maxSpeed while
+   *  you keep running down it; uphill takes it away. Must stay below accelFromRest or you can't start
+   *  up a slope from a standstill (g/2 = 350 would be physical). */
+  slopeGravity: 200,
   airDrag: 0,
   /** Distance travelled per footstep sound. */
   strideLength: 22,

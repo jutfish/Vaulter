@@ -47,6 +47,8 @@ export interface Grip {
 export interface SolidQuery {
   isSolidAt(x: number, y: number): boolean;
   isSolidTile(tx: number, ty: number): boolean;
+  /** Way out of a slope tile for a point below its diagonal (null if not in a slope). */
+  slopePush?(x: number, y: number): { nx: number; ny: number; depth: number } | null;
 }
 
 export interface HoldResult {
@@ -197,19 +199,24 @@ function contactAt(b: PoleBody, solid: SolidQuery, s: number, h: number): Contac
   const y = b.cy + ry;
   if (!solid.isSolidAt(x, y)) return null;
 
-  // Nearest open face of the tile the point is in.
+  // Nearest open face of the tile the point is in (a slope pushes out across its diagonal).
   const tx = Math.floor(x / TILE_SIZE);
   const ty = Math.floor(y / TILE_SIZE);
   let depth = Infinity;
   let nx = 0;
   let ny = -1;
+  const slope = solid.slopePush?.(x, y) ?? null;
   const faces: [number, number, number, number, number][] = [
     [y - ty * TILE_SIZE, 0, -1, tx, ty - 1], // up
     [(ty + 1) * TILE_SIZE - y, 0, 1, tx, ty + 1], // down
     [x - tx * TILE_SIZE, -1, 0, tx - 1, ty], // left
     [(tx + 1) * TILE_SIZE - x, 1, 0, tx + 1, ty], // right
   ];
-  for (const [d, fx, fy, ntx, nty] of faces) {
+  if (slope !== null) {
+    depth = slope.depth;
+    nx = slope.nx;
+    ny = slope.ny;
+  } else for (const [d, fx, fy, ntx, nty] of faces) {
     if (d < depth && !solid.isSolidTile(ntx, nty)) {
       depth = d;
       nx = fx;
@@ -253,7 +260,7 @@ function collideAll(b: PoleBody, solid: SolidQuery, h: number, out: HoldResult, 
     const j = contactAt(b, solid, s, h);
     if (j === null) continue;
     out.contact += j.impulse;
-    if (j.ny * j.ny > 0.5) tally.floor += j.impulse;
+    if (j.ny * j.ny >= 0.49) tally.floor += j.impulse;
     else tally.wall += j.impulse;
     if (j.impulse > tally.biggest) {
       tally.biggest = j.impulse;

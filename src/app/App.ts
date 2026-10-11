@@ -1,6 +1,7 @@
 import { Application, Rectangle } from 'pixi.js';
 import { AudioEngine } from '../audio/AudioEngine';
-import { SIM_DT, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { SIM_DT, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
+import { resetPoleToHands } from '../gameplay/carry';
 import { InputState, type Action } from '../gameplay/input';
 import { PixelStage } from '../rendering/PixelStage';
 import { GameScene } from '../scenes/GameScene';
@@ -72,6 +73,7 @@ export class App {
    *   await __vaulter.play()
    *   __vaulter.hold(['right','aimRight'], 2.5)   // hold actions for 2.5 s of game time
    *   __vaulter.state()
+   *   __vaulter.teleport(col)                     // feet on the ground at that tile column, pole in hand
    */
   private installDevHook(): void {
     const app = this;
@@ -94,6 +96,21 @@ export class App {
         this.game.frame(0, false);
         this.pixi.render();
         return hook.state();
+      },
+      teleport: (col: number, facing: 1 | -1 = 1) => {
+        if (!this.game) return 'no game';
+        const w = this.game.world;
+        const p = w.player;
+        p.x = col * TILE + TILE / 2;
+        p.y = w.level.groundBelow(p.x, 0, w.level.pixelHeight) ?? p.y;
+        p.vx = 0;
+        p.vy = 0;
+        p.facing = facing;
+        p.poleMode = 'carry';
+        p.vault = null;
+        resetPoleToHands(p.carry, p.x, p.y);
+        this.game.view.resetView();
+        return hook.hold([], 0.3);
       },
       state: () => {
         const w = this.game?.world;

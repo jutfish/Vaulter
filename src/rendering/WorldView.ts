@@ -2,6 +2,7 @@ import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
 import { beam as beamCfg, body, pole, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
+import { Tile } from '../gameplay/level';
 import { pointAt } from '../gameplay/poleBody';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
@@ -39,6 +40,9 @@ interface Snapshot {
   beamY: Float64Array;
 }
 
+/** Slope colours, matching the grass/dirt tiles in tiles.png. */
+const DIRT = 0x7c5438;
+const GRASS = 0x5ca848;
 const POLE_COLOR = 0xf0d060;
 const POLE_SHADE = 0xa08030;
 const SKIN = 0xf0bc8c;
@@ -125,7 +129,7 @@ export class WorldView {
 
     this.levelSprite = new Sprite(this.bakeLevel(renderer));
     const flag = new Sprite(sprites.flag);
-    flag.position.set(level.finishX, level.startY - FRAME_H);
+    flag.position.set(level.finishX, (level.groundBelow(level.finishX + 8, 0, level.pixelHeight) ?? level.startY) - FRAME_H);
 
     this.vaulter = new Sprite(sprites.vaulter.idle);
     this.flash.visible = false;
@@ -383,18 +387,31 @@ export class WorldView {
   /** Bakes all solid tiles into one texture (one sprite, one draw call). */
   private bakeLevel(renderer: Renderer): RenderTexture {
     const level = this.world.level;
-    const groundRow = Math.round(level.startY / TILE);
     const tmp = new Container();
+    const slopes = new Graphics();
     for (let ty = 0; ty < level.height; ty++) {
       for (let tx = 0; tx < level.width; tx++) {
-        if (!level.isSolidTile(tx, ty)) continue;
+        const t = level.tileAt(tx, ty);
+        if (t === Tile.Empty) continue;
+        const x = tx * TILE;
+        const y = ty * TILE;
+        if (t === Tile.SlopeUp || t === Tile.SlopeDown) {
+          // Earth below the diagonal with a grass edge along it.
+          const up = t === Tile.SlopeUp;
+          const tri = up ? [x, y + TILE, x + TILE, y, x + TILE, y + TILE] : [x, y, x + TILE, y + TILE, x, y + TILE];
+          slopes.poly(tri).fill(DIRT);
+          const grass = up ? [x, y + TILE, x + TILE, y, x + TILE, y + 4, x + 4, y + TILE] : [x, y, x + TILE, y + TILE, x + TILE - 4, y + TILE, x, y + 4];
+          slopes.poly(grass).fill(GRASS);
+          continue;
+        }
         const open = !level.isSolidTile(tx, ty - 1);
-        const frame = ty >= groundRow ? (open ? 'grass' : 'dirt') : open ? 'wallTop' : 'wall';
+        const frame = t === Tile.Wall ? (open ? 'wallTop' : 'wall') : open ? 'grass' : 'dirt';
         const sp = new Sprite(this.sprites.tiles[frame]);
-        sp.position.set(tx * TILE, ty * TILE);
+        sp.position.set(x, y);
         tmp.addChild(sp);
       }
     }
+    tmp.addChild(slopes);
     const rt = RenderTexture.create({ width: level.pixelWidth, height: level.pixelHeight });
     rt.source.scaleMode = 'nearest';
     renderer.render({ container: tmp, target: rt, clear: true, clearColor: [0, 0, 0, 0] });
@@ -406,10 +423,11 @@ export class WorldView {
   private markers(): Graphics {
     const g = new Graphics();
     const level = this.world.level;
-    const y = level.startY;
     for (let x = level.startX; x < level.pixelWidth; x += 80) {
-      g.rect(Math.round(x), y - 6, 1, 6).fill(0xffffff);
-      g.rect(Math.round(x), y - 6, 1, 2).fill(0xd04040);
+      const y = level.groundBelow(x, 0, level.pixelHeight);
+      if (y === null) continue;
+      g.rect(Math.round(x), Math.round(y) - 6, 1, 6).fill(0xffffff);
+      g.rect(Math.round(x), Math.round(y) - 6, 1, 2).fill(0xd04040);
     }
     return g;
   }

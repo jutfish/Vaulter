@@ -54,7 +54,17 @@ npm install
 | M | Mute / unmute |
 | F3 or ` | Dev overlay (dev builds only): FPS, frame-time graph, worst frame, vault physics |
 
-**How to vault the first wall:** hold D and → from the start. Holding the pole
+**The long run (v0.4)** — warm-up wall, five potholes to hop at a sprint,
+rolling hills, a vault up onto a plateau and a wall after it, then a cliff
+too tall to vault. Get up it by vaulting **backwards**: run right under the
+ledge, plant short of the cliff, let go of ↓ early (about 0.3 s) and hold ←.
+You fly up and back onto the ledge. Run left along it (pole level under the
+tier above), do the same again (hold → this time) and you're on the upper tier, which
+leads to the cliff top. Down the long slope at speed into the big wall (let
+go earlier than usual: faster run, earlier release), two more potholes, the
+last wall and the flag.
+
+**How to vault:** hold D and → from the start. Holding the pole
 out level makes the hands climb back to the end of the pole (watch the hands);
 plant before they get there and you vault on a shorter pole. When you're
 roughly two pole-lengths from the wall, press and hold ↓. Let go of ↓ about
@@ -82,7 +92,7 @@ src/
 public/assets/ sprites and audio (generated placeholders for now)
 tools/        offline asset scripts (Python)
 tests/        Vitest tests; tests/probe = tuning sweeps (not run by npm test)
-docs/         design intent, vault physics, audio asset log
+docs/         design intent, vault physics, level design, audio asset log
 ```
 
 ## How it runs
@@ -108,8 +118,8 @@ docs/         design intent, vault physics, audio asset log
   Arms are straight lines (no elbows); the leaning sprite is rotated, so it shows pixel jaggies.
 - The flexible pole's bend is visual/feel only: planting uses the pole body's straight line.
 - On the keyboard the tip can't be dipped on purpose (↓ is the plant key); a stick will allow it.
-- The carried pole is drawn through walls (only the plant swing collides with walls).
-- One test level. Baked level texture limits a level to ~4096 px wide until chunking is added.
+- One level (the long run, 6720 px). The level is baked into one texture, so a level can be at most
+  the GPU's max texture size wide (16384 px here; 8192 on some older GPUs) until chunking is added.
 - Keyboard only; input goes through an action layer so gamepad can be added.
 - No touch controls.
 - The flight pose is a simple rotation of the "pike" frame.
