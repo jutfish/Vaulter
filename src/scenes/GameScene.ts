@@ -31,6 +31,8 @@ export class GameScene {
   readonly view: WorldView;
   private readonly loop = new FixedStepLoop(SIM_DT, MAX_FRAME_TIME);
   private lastSteps = 0;
+  /** Time until the next pole-hit sound may play (scrapes would otherwise fire every tick). */
+  private poleHitCooldown = 0;
   private saveWarned = false;
   private readonly levelId = 'first-wall';
 
@@ -78,8 +80,15 @@ export class GameScene {
   private handleEvents(events: readonly GameEvent[]): void {
     const audio = this.d.audio;
     const p = this.world.player;
+    this.poleHitCooldown = Math.max(0, this.poleHitCooldown - SIM_DT);
     for (const e of events) {
       switch (e.type) {
+        case 'poleHit':
+          if (this.poleHitCooldown > 0) break;
+          this.poleHitCooldown = e.floor ? 0.09 : 0.15;
+          if (e.floor) audio.play('step', { volume: Math.min(0.6, e.strength / 400), rate: 1.6 + Math.random() * 0.3 });
+          else audio.play('plant', { volume: Math.min(0.8, e.strength / 300), rate: 1.3 });
+          break;
         case 'step':
           audio.play('step', { volume: 0.25 + 0.35 * Math.min(1, Math.abs(p.vx) / run.maxSpeed), rate: 0.9 + Math.random() * 0.2 });
           break;

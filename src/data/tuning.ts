@@ -134,7 +134,19 @@ export const carry = {
   moveWeakening: 0.25,
   /** Arms' strength multiplier during the plant drop (a committed, explosive move). */
   plantStrength: 2.5,
-  /** Pole mass / vaulter mass: how much swinging the pole pushes the vaulter around in the air. */
+  // --- The pole against the level (carry only; the plant drop ignores it). ---
+  /** Bounciness of the pole off surfaces (0..1). */
+  poleBounce: 0.25,
+  /** Friction coefficient of the pole on surfaces: high = the tip digs in and drags. */
+  poleFriction: 0.8,
+  /** Fraction of a penetration corrected per substep (via velocity). */
+  contactBias: 0.3,
+  /** Shoved along its length harder than the grip can hold, the pole slides through the hands
+   *  once the hands lag the pole by more than this (px). */
+  slipStretch: 5,
+  /** On the ground, pole pushes on the vaulter smaller than this (px/s^2) are absorbed by the feet. */
+  footHold: 120,
+  /** Pole mass / vaulter mass: how much the pole pushes the vaulter around (swings, drags, jams). */
   poleMassRatio: 0.06,
 
   // --- Lean: the pole's weight out front gradually tips the body forward. ---

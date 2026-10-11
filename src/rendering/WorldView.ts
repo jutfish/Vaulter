@@ -177,6 +177,11 @@ export class WorldView {
       case 'stab':
         this.shake = 0.15;
         break;
+      case 'poleHit':
+        if (e.floor) this.particles.dust(e.x, e.y, 1, 50);
+        else this.particles.burst(e.x, e.y, 4, 0xfff0c0, 40);
+        if (!e.floor && e.strength > 250) this.shake = 0.08;
+        break;
       case 'hop':
         this.particles.dust(p.x, p.y, 3, 40);
         break;

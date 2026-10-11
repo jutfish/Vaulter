@@ -1,6 +1,7 @@
 import { buildFlatLevel, firstWall, type FlatLevelSpec } from '../../src/data/levels';
 import { SIM_DT } from '../../src/data/tuning';
 import { emptyFrame, type Action, type ActionFrame } from '../../src/gameplay/input';
+import { resetPoleToHands } from '../../src/gameplay/carry';
 import { World } from '../../src/gameplay/world';
 
 /** Builds an ActionFrame from the set of actions held this tick and last tick. */
@@ -45,6 +46,14 @@ export interface AttemptResult {
 
 export function makeWorld(spec: FlatLevelSpec = firstWall): World {
   return new World(buildFlatLevel(spec));
+}
+
+/** A world with the player moved to x (open ground), pole back in the hands. */
+export function makeWorldAt(x: number, spec: FlatLevelSpec = firstWall): World {
+  const w = makeWorld(spec);
+  w.player.x = x;
+  resetPoleToHands(w.player.carry, w.player.x, w.player.y);
+  return w;
 }
 
 /** Scripted run-up: hold Right + aimRight, Down at plantAtX, release after holdAfterPlant. */

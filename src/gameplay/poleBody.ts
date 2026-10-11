@@ -39,6 +39,14 @@ export interface Grip {
   omega: number;
   /** Grip strength multiplier: 1 = normal, lower while a hand is moving, higher for the plant. */
   grip: number;
+  /** The level to collide with (omit for no collisions, e.g. during the committed plant drop). */
+  solid?: SolidQuery;
+}
+
+/** What the pole needs to know about the level. */
+export interface SolidQuery {
+  isSolidAt(x: number, y: number): boolean;
+  isSolidTile(tx: number, ty: number): boolean;
 }
 
 export interface HoldResult {
@@ -49,6 +57,16 @@ export interface HoldResult {
   strain: number;
   /** How far the pole's hand point is from the hands (px): large = grip being overpowered. */
   stretch: number;
+  /** Total contact impulse from the level this tick (px/s, unit mass), and where the biggest one was. */
+  contact: number;
+  contactX: number;
+  contactY: number;
+  /** Most of that contact was the shaft scraping along a floor/ceiling (true) vs. hitting a wall face. */
+  contactFloor: boolean;
+}
+
+export function emptyHold(): HoldResult {
+  return { fx: 0, fy: 0, strain: 0, stretch: 0, contact: 0, contactX: 0, contactY: 0, contactFloor: false };
 }
 
 const L = pole.totalLength;
@@ -102,6 +120,10 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
   let fySum = 0;
   let strain = 0;
   let stretch = 0;
+  out.contact = 0;
+  let biggest = 0;
+  let floorImpulse = 0;
+  let wallImpulse = 0;
   for (let i = 0; i < SUBSTEPS; i++) {
     const rx = Math.cos(b.theta) * u;
     const ry = Math.sin(b.theta) * u;
@@ -141,9 +163,101 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
     b.theta += b.omega * h; // unwrapped on purpose
     fxSum += fx;
     fySum += fy;
+
+    if (g.solid) {
+      for (let s = 0; s <= L + 0.01; s += CONTACT_SPACING) {
+        const j = contactAt(b, g.solid, s, h);
+        if (j === null) continue;
+        out.contact += j.impulse;
+        if (j.ny * j.ny > 0.5) floorImpulse += j.impulse;
+        else wallImpulse += j.impulse;
+        if (j.impulse > biggest) {
+          biggest = j.impulse;
+          out.contactX = j.x;
+          out.contactY = j.y;
+        }
+      }
+    }
   }
+  out.contactFloor = floorImpulse >= wallImpulse;
   out.fx = fxSum / SUBSTEPS;
   out.fy = fySum / SUBSTEPS;
   out.strain = strain;
   out.stretch = stretch;
+}
+
+// --- Contacts with the level ---------------------------------------------------
+
+/** Spacing of the contact points along the pole (px). */
+const CONTACT_SPACING = 4;
+const TILE_SIZE = 16;
+
+interface Contact {
+  x: number;
+  y: number;
+  ny: number;
+  impulse: number;
+}
+
+/**
+ * If the point s on the pole is inside a solid tile, push it out through the
+ * nearest open face: an impulse that stops it moving inward (with a little
+ * bounce), friction along the surface, and a positional correction.
+ */
+function contactAt(b: PoleBody, solid: SolidQuery, s: number, h: number): Contact | null {
+  const u = s - L / 2;
+  const rx = Math.cos(b.theta) * u;
+  const ry = Math.sin(b.theta) * u;
+  const x = b.cx + rx;
+  const y = b.cy + ry;
+  if (!solid.isSolidAt(x, y)) return null;
+
+  // Nearest open face of the tile the point is in.
+  const tx = Math.floor(x / TILE_SIZE);
+  const ty = Math.floor(y / TILE_SIZE);
+  let depth = Infinity;
+  let nx = 0;
+  let ny = -1;
+  const faces: [number, number, number, number, number][] = [
+    [y - ty * TILE_SIZE, 0, -1, tx, ty - 1], // up
+    [(ty + 1) * TILE_SIZE - y, 0, 1, tx, ty + 1], // down
+    [x - tx * TILE_SIZE, -1, 0, tx - 1, ty], // left
+    [(tx + 1) * TILE_SIZE - x, 1, 0, tx + 1, ty], // right
+  ];
+  for (const [d, fx, fy, ntx, nty] of faces) {
+    if (d < depth && !solid.isSolidTile(ntx, nty)) {
+      depth = d;
+      nx = fx;
+      ny = fy;
+    }
+  }
+  if (depth === Infinity) depth = y - ty * TILE_SIZE; // buried: push up
+
+  // Velocity of the contact point and the effective mass along the normal.
+  const vx = b.vx - b.omega * ry;
+  const vy = b.vy + b.omega * rx;
+  const vn = vx * nx + vy * ny;
+  const rn = rx * ny - ry * nx;
+  const kn = 1 + (rn * rn) / INERTIA;
+  // Want to be separating at least as fast as the penetration needs (bias), with a little bounce.
+  const target = Math.max(-cfg.poleBounce * vn, (cfg.contactBias * depth) / h);
+  let jn = (target - vn) / kn;
+  if (jn <= 0) return null;
+  // Friction along the surface, limited by the normal impulse.
+  const tx2 = -ny;
+  const ty2 = nx;
+  const vt = vx * tx2 + vy * ty2;
+  const rt = rx * ty2 - ry * tx2;
+  const kt = 1 + (rt * rt) / INERTIA;
+  let jt = -vt / kt;
+  const maxF = cfg.poleFriction * jn;
+  if (jt > maxF) jt = maxF;
+  if (jt < -maxF) jt = -maxF;
+  const ix = nx * jn + tx2 * jt;
+  const iy = ny * jn + ty2 * jt;
+  b.vx += ix;
+  b.vy += iy;
+  b.omega += (rx * iy - ry * ix) / INERTIA;
+  jn = Math.hypot(ix, iy);
+  return { x, y, ny, impulse: jn };
 }

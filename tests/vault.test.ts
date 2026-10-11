@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { body, pole, run } from '../src/data/tuning';
 import { bendEnergy, startVault, stepVault, totalEnergy } from '../src/gameplay/vault';
+import { reachOf } from '../src/gameplay/carry';
+import { firstWall } from '../src/data/levels';
 import { attemptVault } from './helpers/sim';
 
 const WALL_X = 100 * 16; // firstWall: 3-tile (48 px) wall at column 100
@@ -72,10 +74,21 @@ describe('the sweet spot (full run-up into the first wall)', () => {
     expect(q[1]).toBeGreaterThan(q[2]!);
   });
 
-  it('planting right at the wall jams the pole instead of vaulting', () => {
-    const r = attemptVault({ plantAtX: WALL_X - 40, holdAfterPlant: 0.5 });
+  it('dropping the pole onto the edge of a low wall jams it instead of vaulting', () => {
+    // A 1-tile wall is below the hands: the level pole reaches over it, and the drop
+    // catches the shaft on the wall's top edge, well short of the tip.
+    const lowWall = { ...firstWall, walls: [{ col: 0, width: 1, height: 12 }, { col: 100, width: 2, height: 1 }] };
+    const r = attemptVault({ plantAtX: WALL_X - 30, holdAfterPlant: 0.5 }, lowWall);
     expect(r.events).toContain('stab');
     expect(r.planted).toBe(false);
+  });
+
+  it('running the poised pole into a wall shoves it back through the hands', () => {
+    const r = attemptVault({ plantAtX: 99999, holdAfterPlant: 0 }, firstWall, 6);
+    const c = r.world.player.carry;
+    expect(r.events).toContain('poleHit');
+    expect(reachOf(c)).toBeLessThan(pole.length - 20); // the pole slid back
+    expect(r.world.player.x).toBeLessThan(WALL_X);
   });
 
   it('is deterministic: same inputs, same result', () => {

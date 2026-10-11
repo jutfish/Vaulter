@@ -14,6 +14,8 @@ export type GameEvent =
   | { type: 'stab' }
   /** Down let go: the pole starts to straighten. */
   | { type: 'release' }
+  /** The carried pole hit or scraped the level (floor = scraping a floor/ceiling, else a wall face). */
+  | { type: 'poleHit'; x: number; y: number; strength: number; floor: boolean }
   /** Vaulter leaves the pole. tipped = held so long the pole fell over. */
   | { type: 'launch'; quality: number; perfect: boolean; tipped: boolean }
   | { type: 'fellBack' }
@@ -185,6 +187,8 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
     else setPlantSwing(p.carry, pole.plantSwingSpeed, dt);
   }
   const leadBefore = p.aim;
+  const vxBefore = p.vx;
+  const vyBefore = p.vy;
 
   // --- Gravity and collision ---
   p.vy = Math.min(gravity.maxFall, p.vy + gravity.g * dt);
@@ -228,17 +232,26 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       stridePhase: p.strideDistance / run.strideLength,
       allowHandMoves: p.poleMode === 'carry',
       swingRate: p.poleMode === 'swing' ? pole.plantSwingSpeed : 0,
+      solid: p.poleMode === 'swing' ? null : level,
     },
     dt,
   );
   p.aim = leadAngle(p.carry);
 
-  // In the air, swinging the pole pushes the vaulter the other way (its weight alone doesn't count).
-  if (!p.grounded) {
-    const h = p.carry.hold;
-    p.vx -= h.fx * carryCfg.poleMassRatio * dt;
-    p.vy -= (h.fy + gravity.g) * carryCfg.poleMassRatio * dt;
+  // The pole pushes back on the vaulter: only the force beyond what it takes to carry it along
+  // (so running with it costs nothing, but swings, drags and jams do). Vertical only in the air.
+  const h = p.carry.hold;
+  const ex = h.fx - (p.vx - vxBefore) / dt;
+  const ey = h.fy + gravity.g - (p.vy - vyBefore) / dt;
+  let push = -ex * carryCfg.poleMassRatio;
+  if (p.grounded) {
+    // Feet on the ground soak up small pushes; only real hits (drags, jams, big swings) move you.
+    push = Math.sign(push) * Math.max(0, Math.abs(push) - carryCfg.footHold);
+  } else {
+    p.vy -= ey * carryCfg.poleMassRatio * dt;
   }
+  p.vx += push * dt;
+  if (h.contact > POLE_HIT_EVENT) events.push({ type: 'poleHit', x: h.contactX, y: h.contactY, strength: h.contact, floor: h.contactFloor });
 
   if (p.poleMode === 'swing') checkPlantContact(p, level, leadBefore, events);
 }
@@ -291,6 +304,9 @@ function jam(p: Player, side: number, events: GameEvent[]): void {
   p.carry.leadCmd = side > 0 ? 0 : Math.PI;
   events.push({ type: 'stab' });
 }
+
+/** Contact impulse (px/s) above which the pole hitting the level is an event (sound, dust). */
+const POLE_HIT_EVENT = 60;
 
 /** Contacts this close to the tip count as the tip landing; anything further up the shaft jams. */
 const PLANT_TIP_ZONE = 6;

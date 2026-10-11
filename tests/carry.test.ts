@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { beam as beamCfg, carry, pole, SIM_DT } from '../src/data/tuning';
 import { createBeam, deflectionAt, stepBeam, twang, type BeamFrame } from '../src/gameplay/beam';
 import { handMid, reachOf } from '../src/gameplay/carry';
-import { createPoleBody, placePole, stepHeldPole } from '../src/gameplay/poleBody';
+import { createPoleBody, emptyHold, placePole, stepHeldPole } from '../src/gameplay/poleBody';
 import type { Action } from '../src/gameplay/input';
-import { attemptVault, frameFor, makeWorld } from './helpers/sim';
+import { attemptVault, frameFor, makeWorld, makeWorldAt } from './helpers/sim';
 
 const vaultHands = [
   { s: carry.gripVault - carry.handGap / 2, grip: 1 },
@@ -149,7 +149,7 @@ describe('the pole as its own object (v3)', () => {
   const leadDeg = (w: ReturnType<typeof makeWorld>) => (w.player.aim * 180) / Math.PI;
 
   it('Right straight to Left: the hands work along the whole pole and it stays level', () => {
-    const w = makeWorld();
+    const w = makeWorldAt(600);
     let prev = new Set<Action>();
     let maxTilt = 0;
     for (let t = 0; t < 3; t += SIM_DT) {
@@ -166,7 +166,7 @@ describe('the pole as its own object (v3)', () => {
   });
 
   it('Right, Up, Left rolled: the pole arcs over the top, same end leading', () => {
-    const w = makeWorld();
+    const w = makeWorldAt(600);
     let prev = new Set<Action>();
     let highest = 0;
     let lowest = 0;
@@ -198,7 +198,7 @@ describe('the pole as its own object (v3)', () => {
     const riseTime = (sMid: number) => {
       const b = createPoleBody();
       placePole(b, sMid, 0, 0, 0);
-      const out = { fx: 0, fy: 0, strain: 0, stretch: 0 };
+      const out = emptyHold();
       for (let t = 0; t < 3; t += SIM_DT) {
         stepHeldPole(b, { x: 0, y: 0, vx: 0, vy: 0, sMid, theta: -Math.PI / 3, omega: 0, grip: 1 }, SIM_DT, out);
         if (b.theta < -Math.PI / 3 + 0.05) return t;
@@ -209,5 +209,40 @@ describe('the pole as its own object (v3)', () => {
     const fromMiddle = riseTime(pole.totalLength / 2);
     expect(fromEnd).toBeLessThan(1);
     expect(fromEnd).toBeGreaterThan(fromMiddle * 1.5);
+  });
+});
+
+describe('the pole against the level (v3)', () => {
+  const ground = { isSolidAt: (_x: number, y: number) => y >= 0, isSolidTile: (_tx: number, ty: number) => ty >= 0 };
+
+  /** Hands moving right at 300 px/s, 18 px above the ground, pole held 25° tip-down. Mean hand force. */
+  const drag = (withGround: boolean) => {
+    const b = createPoleBody();
+    const sMid = carry.gripVault;
+    const angle = (25 * Math.PI) / 180;
+    placePole(b, sMid, 0, -18, angle, 300, 0);
+    const out = emptyHold();
+    let fx = 0;
+    let contact = 0;
+    let floor = 0;
+    const n = 120;
+    for (let i = 0; i < n; i++) {
+      const x = 300 * i * SIM_DT;
+      stepHeldPole(b, { x, y: -18, vx: 300, vy: 0, sMid, theta: angle, omega: 0, grip: 1, ...(withGround ? { solid: ground } : {}) }, SIM_DT, out);
+      fx += out.fx;
+      contact += out.contact;
+      if (out.contact > 0 && out.contactFloor) floor++;
+    }
+    return { fx: fx / n, contact, floor, tipY: b.cy + Math.sin(b.theta) * (pole.totalLength / 2) };
+  };
+
+  it('a dipped tip scrapes along the ground and the hands have to haul it', () => {
+    const free = drag(false);
+    const scraping = drag(true);
+    expect(free.tipY).toBeGreaterThan(5); // without ground the tip would be below the surface
+    expect(scraping.contact).toBeGreaterThan(0);
+    expect(scraping.floor).toBeGreaterThan(0);
+    expect(scraping.tipY).toBeLessThan(2); // held at the surface (small bounce allowed)
+    expect(scraping.fx).toBeGreaterThan(free.fx + 50); // pulling against friction
   });
 });

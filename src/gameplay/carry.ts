@@ -1,6 +1,6 @@
 import { beam as beamCfg, body, carry as cfg, pole, run } from '../data/tuning';
 import { clearBeam, createBeam, resetBeamHistory, stepBeam, twang, type BeamHand, type BeamState } from './beam';
-import { createPoleBody, placePole, stepHeldPole, wrapAngle, type HoldResult, type PoleBody } from './poleBody';
+import { createPoleBody, emptyHold, placePole, pointAt, stepHeldPole, wrapAngle, type HoldResult, type PoleBody, type SolidQuery } from './poleBody';
 
 /**
  * How the vaulter carries the pole between vaults (v3). The pole is its own
@@ -42,6 +42,8 @@ export interface CarryState {
   hold: HoldResult;
   /** Smoothed arm strain 0..1+ (for visuals/sound). */
   strain: number;
+  /** How far (px) the pole slid through the hands this tick when shoved along its length. */
+  slipped: number;
   beam: BeamState;
   /** Number of completed hand moves (for tests/feedback). */
   handMoves: number;
@@ -67,7 +69,8 @@ export function createCarry(feetX = 0, feetY = 0, facing: 1 | -1 = 1): CarryStat
     anchorDX: cfg.handForward * facing,
     anchorDY: -body.gripHeight,
     pole: createPoleBody(),
-    hold: { fx: 0, fy: 0, strain: 0, stretch: 0 },
+    hold: emptyHold(),
+    slipped: 0,
     strain: 0,
     beam: createBeam(),
     handMoves: 0,
@@ -82,6 +85,7 @@ function carryAngle(side: number): number {
 }
 
 export const isGripping = (h: Hand): boolean => h.t >= 1;
+const allGripping = (c: CarryState): boolean => isGripping(c.hands[0]) && isGripping(c.hands[1]);
 
 /** Midpoint between the hands along the pole (moving hands count at their current position). */
 export function handMid(c: CarryState): number {
@@ -201,6 +205,8 @@ export interface CarryInputs {
   allowHandMoves: boolean;
   /** Plant swing: how fast (rad/s) the arms are driving the lead end down; 0 otherwise. */
   swingRate: number;
+  /** The level, for the pole to collide with (null during the committed plant drop). */
+  solid: SolidQuery | null;
 }
 
 /**
@@ -252,10 +258,25 @@ export function stepCarry(c: CarryState, p: CarryInputs, dt: number): void {
       // During the plant the arms drive the drop (track its speed, extra strength).
       omega: p.swingRate * swingSign(c),
       grip: p.swingRate > 0 ? grip * cfg.plantStrength : grip,
+      ...(p.solid ? { solid: p.solid } : {}),
     },
     dt,
     c.hold,
   );
+
+  // Shoved along its length harder than the grip holds (e.g. into a wall), the pole slides
+  // through the hands instead of dragging them with it.
+  c.slipped = 0;
+  const hp = pointAt(c.pole, handMid(c));
+  const along = (p.x + c.anchorDX - hp.x) * Math.cos(c.pole.theta) + (p.y + c.anchorDY - hp.y) * Math.sin(c.pole.theta);
+  if (Math.abs(along) > cfg.slipStretch && allGripping(c)) {
+    const slide = Math.sign(along) * (Math.abs(along) - cfg.slipStretch);
+    const lo = Math.min(c.hands[0].s, c.hands[1].s);
+    const hi = Math.max(c.hands[0].s, c.hands[1].s);
+    const d = Math.max(0.5 - lo, Math.min(L - 0.5 - hi, slide));
+    for (const h of c.hands) h.s = h.from = h.to = h.s + d;
+    c.slipped = d;
+  }
   c.strain = approachExp(c.strain, c.hold.strain, 12, dt);
 
   // The flexible pole: bending only (the body already does the rigid motion, so both
