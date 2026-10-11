@@ -83,6 +83,13 @@ export class GameScene {
     this.poleHitCooldown = Math.max(0, this.poleHitCooldown - SIM_DT);
     for (const e of events) {
       switch (e.type) {
+        case 'drop':
+          audio.play(e.reason === 'letGo' ? 'ui_click' : 'bonk', { volume: 0.7 });
+          if (e.reason !== 'letGo') this.d.hud.toast(e.reason === 'bonk' ? 'Knocked off the pole!' : 'Lost the pole!', 1.0);
+          break;
+        case 'pickup':
+          audio.play('plant', { volume: 0.5, rate: 1.4 });
+          break;
         case 'poleHit':
           if (this.poleHitCooldown > 0) break;
           this.poleHitCooldown = e.floor ? 0.09 : 0.15;

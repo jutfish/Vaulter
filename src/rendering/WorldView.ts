@@ -33,6 +33,7 @@ interface Snapshot {
   poleY0: number;
   poleTheta: number;
   strain: number;
+  held: boolean;
   handS: [number, number];
   handT: [number, number];
   beamY: Float64Array;
@@ -71,6 +72,7 @@ function snapshot(world: World): Snapshot {
     ...poleEnd0(c.pole),
     poleTheta: c.pole.theta,
     strain: c.strain,
+    held: c.held,
     handS: [c.hands[0].s, c.hands[1].s],
     handT: [c.hands[0].t, c.hands[1].t],
     beamY: Float64Array.from(c.beam.y),
@@ -176,6 +178,9 @@ export class WorldView {
       case 'bonk':
       case 'stab':
         this.shake = 0.15;
+        break;
+      case 'drop':
+        if (e.reason !== 'letGo') this.shake = 0.1;
         break;
       case 'poleHit':
         if (e.floor) this.particles.dust(e.x, e.y, 1, 50);
@@ -313,6 +318,19 @@ export class WorldView {
     // Arms: from the (leaning, bobbing) shoulder to each hand on the pole. Hand 0 is drawn behind the body.
     const sx = Math.round(x) + SHOULDER.x * facing * Math.cos(bodyRot) - SHOULDER.y * Math.sin(bodyRot);
     const sy = Math.round(y) + bob + SHOULDER.x * facing * Math.sin(bodyRot) + SHOULDER.y * Math.cos(bodyRot);
+    if (!b.held) {
+      // Empty-handed: arms hang (and swing a little with the run).
+      const swing = Math.sin(this.runPhase * Math.PI) * 3 * Math.min(1, Math.abs(p.vx) / 200);
+      for (let h = 0; h < 2; h++) {
+        const gfx = h === 0 ? this.armsBack : this.armsFront;
+        const skin = h === 0 ? SKIN_BACK : SKIN;
+        const hx = sx + facing * (h === 0 ? -swing : swing);
+        const hy = sy + 9;
+        gfx.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: 2, color: OUTLINE });
+        gfx.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: 1, color: skin });
+      }
+      return;
+    }
     for (let h = 0; h < 2; h++) {
       const s = lerp(a.handS[h]!, b.handS[h]!, alpha);
       const t = b.handT[h]!;

@@ -246,3 +246,94 @@ describe('the pole against the level (v3)', () => {
     expect(scraping.fx).toBeGreaterThan(free.fx + 50); // pulling against friction
   });
 });
+
+describe('losing and picking up the pole (v3)', () => {
+  const GROUND = 224;
+  const run = (w: ReturnType<typeof makeWorld>, seconds: number, held: (t: number) => Action[], prevIn = new Set<Action>()) => {
+    let prev = prevIn;
+    const events: string[] = [];
+    for (let t = 0; t < seconds; t += SIM_DT) {
+      const now = new Set<Action>(held(t));
+      w.step(frameFor(now, prev), SIM_DT);
+      prev = now;
+      events.push(...w.events.map((e) => e.type));
+    }
+    return { prev, events };
+  };
+
+  it('letting go (S): the pole falls, bounces and comes to rest on the ground', () => {
+    const w = makeWorldAt(600);
+    run(w, 1, () => ['aimRight']);
+    const { events } = run(w, 3, (t) => (t < 0.05 ? ['grab'] : []));
+    const pl = w.player.carry.pole;
+    expect(events).toContain('drop');
+    expect(w.player.carry.held).toBe(false);
+    for (const s of [0, pole.totalLength]) {
+      const y = pl.cy + Math.sin(pl.theta) * (s - pole.totalLength / 2);
+      expect(y).toBeGreaterThan(GROUND - 4);
+      expect(y).toBeLessThan(GROUND + 2);
+    }
+    expect(Math.hypot(pl.vx, pl.vy)).toBeLessThan(15);
+  });
+
+  it('picking it up again (S) when it is within reach', () => {
+    const w = makeWorldAt(600);
+    run(w, 0.5, () => ['aimRight']);
+    run(w, 2, (t) => (t < 0.05 ? ['grab'] : []));
+    const { events } = run(w, 0.2, (t) => (t < 0.05 ? ['grab'] : []));
+    expect(events).toContain('pickup');
+    expect(w.player.carry.held).toBe(true);
+    expect(reachOf(w.player.carry)).toBeGreaterThan(pole.totalLength / 2 - 1); // the longer side leads
+  });
+
+  it('cannot pick it up from too far away', () => {
+    const w = makeWorldAt(600);
+    run(w, 0.5, () => ['aimRight']);
+    run(w, 2, (t) => (t < 0.05 ? ['grab'] : []));
+    run(w, 1.5, () => ['left']); // walk well away (the pole lies to the right)
+    run(w, 1, () => []);
+    const { events } = run(w, 0.2, (t) => (t < 0.05 ? ['grab'] : []));
+    expect(events).not.toContain('pickup');
+    expect(w.player.carry.held).toBe(false);
+  });
+
+  it('without the pole, Down does nothing', () => {
+    const w = makeWorldAt(600);
+    run(w, 1, (t) => (t < 0.05 ? ['grab'] : []));
+    const { events } = run(w, 1.5, () => ['right', 'aimDown']);
+    expect(events).not.toContain('plantSwing');
+    expect(events).not.toContain('plant');
+  });
+
+  it('can scoop it up on the run', () => {
+    const w = makeWorldAt(600);
+    run(w, 0.5, () => ['aimRight']);
+    run(w, 2.5, (t) => (t < 0.05 ? ['grab'] : []));
+    run(w, 2, () => ['left']); // back off to get a run-up
+    let p = run(w, 0.01, () => []).prev;
+    let grabbed = false;
+    for (let t = 0; t < 4 && !grabbed; t += SIM_DT) {
+      const now = new Set<Action>(['right', 'grab']);
+      w.step(frameFor(now, p), SIM_DT);
+      p = new Set(['right']); // re-press grab every tick: a "pressed" edge each time
+      grabbed = w.player.carry.held;
+    }
+    expect(grabbed).toBe(true);
+    expect(Math.abs(w.player.vx)).toBeGreaterThan(150);
+  });
+
+  it('getting knocked off the pole mid-vault leaves it behind', () => {
+    // Search plant distances and holds for a vault that bonks into the wall.
+    let found = false;
+    for (const d of [70, 80, 90, 100, 110, 120] as const) {
+      for (const hold of [0.6, 0.8, 1.0, 1.2]) {
+        const r = attemptVault({ plantAtX: 100 * 16 - d, holdAfterPlant: hold });
+        if (!r.events.includes('bonk')) continue;
+        found = true;
+        expect(r.events).toContain('drop');
+        expect(r.world.player.carry.held).toBe(false);
+      }
+    }
+    expect(found).toBe(true);
+  });
+});

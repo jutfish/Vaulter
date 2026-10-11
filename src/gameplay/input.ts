@@ -8,9 +8,11 @@ export type Action =
   | 'aimUp'
   | 'aimDown'
   | 'aimLeft'
-  | 'aimRight';
+  | 'aimRight'
+  /** Let go of the pole, or pick it up. */
+  | 'grab';
 
-export const ACTIONS: readonly Action[] = ['left', 'right', 'hop', 'aimUp', 'aimDown', 'aimLeft', 'aimRight'];
+export const ACTIONS: readonly Action[] = ['left', 'right', 'hop', 'aimUp', 'aimDown', 'aimLeft', 'aimRight', 'grab'];
 
 export interface ActionFrame {
   down: Record<Action, boolean>;
@@ -19,7 +21,7 @@ export interface ActionFrame {
 }
 
 function emptyRecord(): Record<Action, boolean> {
-  return { left: false, right: false, hop: false, aimUp: false, aimDown: false, aimLeft: false, aimRight: false };
+  return { left: false, right: false, hop: false, aimUp: false, aimDown: false, aimLeft: false, aimRight: false, grab: false };
 }
 
 export function emptyFrame(): ActionFrame {

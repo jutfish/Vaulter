@@ -19,45 +19,62 @@ Units: pixels, seconds, radians. World y points **down**. 16 px = 1 m.
 | Release | let go of ↓ | Pole unlatches and straightens (stiffer by `returnEfficiency`), firing the vaulter out along the chord. |
 | Flight | — | Normal gravity + air control. Leftover forward speed is kept. |
 
-## Carrying the pole (v2, `src/gameplay/carry.ts` + `beam.ts`)
+## The pole as its own object (v3: `poleBody.ts`, `carry.ts`, `beam.ts`)
 
-Between vaults the pole is carried, and that is simulated too:
+Between vaults the pole is a **rigid body of its own** (position, velocity,
+angle, spin; gravity acts on it). The vaulter only acts on it through the hands:
 
-- **Hands, hand over hand.** Two hands at positions `s` along the pole
-  (px from the butt). Relaxed carry: hands mid-pole (`gripCarry` 20). Poised
-  (within `poisedAngle` of level): the hand furthest from the target lets go,
-  passes the other and re-grips (`handMoveTime`), then the pole slides through
-  both hands to settle at `gripVault` 4. **Grip-to-tip = `totalLength` − hand
-  midpoint**, and that is the vault's pole length: poise early (hands back,
-  76 px) for a full vault; plant while the hands are still climbing and the
-  pole is shorter and the vault lower (tested).
-- **Lean.** A damped spring (`leanOmega`, `leanDamping`) toward a target
-  lean = pole weight out in front (`leanFromPole` × how far the pole's middle
-  sticks out past the hands × how level it is) + running speed
-  (`leanFromSpeed`). The lean rotates the shoulders/hands about the feet, so it
-  moves the grip slightly forward and down.
-- **Running bob.** Shoulders drop at each foot strike and rise in flight:
-  `−amp·|sin(π·stridePhase)|`, amp grows with speed (`bobAtLowSpeed` →
-  `bobAtMaxSpeed`). The sharp dip at each foot strike is what sets the pole rippling.
-- **Aim inertia.** Moment of inertia about the hands grows as more pole sticks
-  out, so the aim spring's frequency drops (`aimOmega` × √(I_ref / I)), and the
-  arms can only accelerate the pole round at `aimMaxAccel`.
-- **Flexible pole (beam).** 17 points along the pole; only sideways
-  deflection is simulated, in the frame that moves with the hands. Load on
-  every point = gravity across the pole − the hands' acceleration across
-  the pole − angular acceleration × distance from the hands. Discrete
-  Euler-Bernoulli bending (free ends), two hand springs (a moving hand loosens
-  to `1 − handLoosen` grip), velocity damping plus a little kink damping. Stiffness is
-  derived from `tipFrequency` for the hands-back overhang (cantilever first
-  mode). About 45 substeps per tick keep explicit integration stable (ω·h ≤ 1).
-  **The vault physics never reads the beam**: it's feel and visuals only,
-  and deterministic.
+- **Hand spring** at the hands' midpoint (`handOmega`, capped at
+  `handForceCap`) pulls the pole's hand point to where the hands are.
+- **Arms' couple** (capped at `armTorque`) holds the pole's weight
+  (feed-forward) and turns it toward the wanted angle at a speed it can still
+  brake from (`rotOmega`, `rotVelocityGain`), so a heavy pole doesn't overshoot.
+  Holding it level from one end needs `(totalLength/2 - gripVault) * g` = 25 200,
+  ~42% of the arms; swinging it hard maxes them out (strain > 1, the pole trembles).
+  Held near the middle it's light and quick (tested: rising from level is
+  over 1.5x slower held from the end).
+- **Angles are continuous** (not wrapped), so a lagging pole still follows the
+  path the input drew.
+- **Flexible pole (beam)**: bending only, both hands always pin it; shaken by
+  the hands' own motion (stride jolts, lean) and turned with the body. Stiffness
+  from `beam.tipFrequency`. The vault physics never reads it.
 
-At current values: ~2.7 px droop when held level and still; ~±4 px steady
-ripple at full running speed (stride-driven); ~13 px peak whip when swinging
-the pole level from a relaxed carry, settling in ~1 s.
+### Input: "point the long end this way"
+- A direction within `leadFlipAngle` (~100 deg) of the **last commanded** lead
+  direction rotates the pole there. Rolling Right, Up, Left therefore arcs it
+  over the top (a stick half-circle is the same thing).
+- Further away (e.g. Right straight to Left), the **other end becomes the
+  lead**; it turns at most ~80 deg and the hands work hand over hand along the
+  whole pole (~1.2 s end to end) to make it long.
+- Holding a direction: hands go to `gripVault` from the far end (lead length
+  76). No direction: hands relax to `gripCarry` (lead 60) and the lead end rises
+  to `carryElevation` on its side.
+- Plant (Down, lead within `plantAimTolerance` of level): the arms drive the lead
+  end down at `plantSwingSpeed`, tracking its speed with `plantStrength` x the
+  strength; the drop ignores collisions and its contact is swept exactly as
+  before. The pole lands ~20 px later than v2 (press Down a touch earlier).
 
-Inspect with `npm run probe` (carry timelines, whip sources).
+### Against the level
+- Contact points every 4 px along the pole are pushed out of solid tiles
+  (`poleBounce`, `poleFriction`, `contactBias`). A dipped tip scrapes and drags;
+  a pole run into a wall is shoved back and **slides through the hands** once
+  they lag it by `slipStretch` along its length.
+- The vaulter feels only the force **beyond** carrying the pole along
+  (`poleMassRatio`), so running with it costs nothing; drags, jams and big
+  swings push you. On the ground the feet absorb pushes under `footHold`.
+
+### Losing it (normal, not special-cased)
+- **Yanked:** pulled sideways out of the hands by more than `gripBreakStretch`.
+- **Pushed off the end:** slid through the hands past the pole's end.
+- **Bonk:** body hits something mid-vault: knocked off, the pole topples.
+- **Let go:** S. **Pick up:** S again; reach `grabReach` anywhere from the
+  hands down to the ankles (you stoop), at any speed (scoop it on the run). The
+  hands grab where they meet it; the longer side leads.
+- A free pole falls, bounces, slides and settles (`stepFreePole`,
+  `freeSpinDrag`). Without it Down does nothing; hop still works.
+
+Inspect with `npm run probe` (carry timelines incl. slide and arc; busy-run
+stability; slide-then-arc player trace).
 
 ## The model
 
@@ -128,17 +145,15 @@ forward-speed factor.
    (well-timed clears, early and late don't, quality peaks in the middle).
 4. Play it. Numbers only get you close; feel decides.
 
-### Probe at current values (2026-10-11, v2: grip height 20, hands 6 px forward, lean)
+### Probe at current values (2026-10-11, v3: pole body, collisions; plant ~20 px later than v2)
 
 ```
 hold   D80 D100 D120 D140 D160 D180  quality
-0.35     0    0    0    0    0    0   0.00
-0.40    67   37    0    0    0    0   0.05
-0.45    58   73   53   28    0    0   0.45
-0.50    41   72   70   54   34   10   0.76
-0.55    40   58   71   61   48   30   0.71
-0.60    40   49   64   60   49   35   0.66
-0.70    40   44   47   47   39   28   0.53
+0.40    29   55   23    0    0    0   0.05
+0.45    29   65   66   43   14    0   0.45
+0.50    29   44   74   64   46   25   0.76
+0.55    29   41   63   68   56   38   0.72
+0.60    29   41   52   65   57   45   0.66
 ```
 
 ## Models tried and rejected (don't repeat)
@@ -159,3 +174,12 @@ hold   D80 D100 D120 D140 D160 D180  quality
 5. **Plant contact checked once per tick** — the tip drops ~7° per tick, so
    "contact near the tip" vs "mid-shaft jam" depended on where the step
    landed; a 2 px grip change made every plant jam. Now swept in 0.01 rad steps.
+6. **Pole body with a plain spring for the arms and a torque cap near the
+   pole's weight** (v3): arms at 30 000 vs 25 200 needed left no braking
+   margin and the pole fell 72 deg past level. Now 60 000 with a brake-aware turn speed.
+7. **Beam hand pins loosening during hand moves** (v3): with the rigid motion
+   now in the pole body, a single-pin beam double-counted rotation and drifted
+   to 300 px. The beam is bending-only; both hands always pin it.
+8. **Dev snapshot via `extract.pixels(renderTexture)`**: reading the live
+   render texture back corrupted later frames (world layer vanished). The
+   snapshot now renders a separate copy with `extract.canvas`.

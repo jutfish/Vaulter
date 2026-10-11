@@ -1,6 +1,6 @@
-import { Application } from 'pixi.js';
+import { Application, Rectangle } from 'pixi.js';
 import { AudioEngine } from '../audio/AudioEngine';
-import { SIM_DT } from '../data/tuning';
+import { SIM_DT, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { InputState, type Action } from '../gameplay/input';
 import { PixelStage } from '../rendering/PixelStage';
 import { GameScene } from '../scenes/GameScene';
@@ -100,18 +100,32 @@ export class App {
         if (!w) return null;
         const p = w.player;
         const cam = this.game!.view.camera;
-        return { x: p.x, y: p.y, vx: p.vx, vy: p.vy, pole: p.poleMode, cleared: w.cleared, lastVault: w.lastVault, camera: { x: cam.x, y: cam.y } };
+        const pb = p.carry.pole;
+        return {
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          pole: p.poleMode,
+          held: p.carry.held,
+          poleBody: { cx: pb.cx, cy: pb.cy, vx: pb.vx, vy: pb.vy, theta: pb.theta, omega: pb.omega },
+          cleared: w.cleared,
+          lastVault: w.lastVault,
+          camera: { x: cam.x, y: cam.y },
+        };
       },
       /**
        * PNG data URL of a crop of the 480x270 game image, upscaled with nearest
        * neighbour. Default: 160x90 around the player at 6x. For visual checks.
        */
       snapshot: (w = 160, h = 90, scale = 6) => {
-        const pixels = this.pixi.renderer.extract.pixels(this.stage.target);
-        const src = document.createElement('canvas');
-        src.width = pixels.width;
-        src.height = pixels.height;
-        src.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels.pixels), pixels.width, pixels.height), 0, 0);
+        // Render a separate copy of the view (reading the live render texture back disturbs it).
+        const src = this.pixi.renderer.extract.canvas({
+          target: this.stage.world,
+          frame: new Rectangle(0, 0, VIEW_WIDTH, VIEW_HEIGHT),
+          resolution: 1,
+          clearColor: 0x8ec8f0,
+        }) as HTMLCanvasElement;
         const view = this.game!.view.camera.viewOrigin(1);
         const p = this.game!.world.player;
         const x0 = Math.round(p.x - view.x - w / 2);

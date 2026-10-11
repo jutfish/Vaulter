@@ -144,6 +144,13 @@ export const carry = {
   /** Shoved along its length harder than the grip can hold, the pole slides through the hands
    *  once the hands lag the pole by more than this (px). */
   slipStretch: 5,
+  // --- Losing and picking up the pole ---
+  /** The hands lose the pole when it's dragged this far (px) out of them. */
+  gripBreakStretch: 14,
+  /** Picking up: the hands reach this far (px) from where they are to the pole. */
+  grabReach: 18,
+  /** Spin damping of a free pole (1/s). */
+  freeSpinDrag: 0.6,
   /** On the ground, pole pushes on the vaulter smaller than this (px/s^2) are absorbed by the feet. */
   footHold: 120,
   /** Pole mass / vaulter mass: how much the pole pushes the vaulter around (swings, drags, jams). */

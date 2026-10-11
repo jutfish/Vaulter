@@ -5,6 +5,7 @@ export const GAMEPLAY_KEYS: Record<string, Action> = {
   KeyA: 'left',
   KeyD: 'right',
   KeyW: 'hop',
+  KeyS: 'grab',
   Space: 'hop',
   ArrowUp: 'aimUp',
   ArrowDown: 'aimDown',

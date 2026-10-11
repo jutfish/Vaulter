@@ -15,13 +15,18 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 
 ## Current state (2026-10-11)
 - **v0.1.0** (JT played it): liked run-up time/top speed, zoom, vault spring, hop/air control after the vault, time trial, best height. Visuals OK as placeholder for now.
-- **v0.2.0 built, awaiting JT's feel test**: the carried pole is physical — flexible beam (stride ripple, droop, twang after launch), hand-over-hand grip (poise early → hands at the butt → full 76 px pole; late → shorter pole, lower vault), sprung forward lean under the pole's weight, running bob, aim inertia. Arms drawn live to the hands. See docs/vault-physics.md "Carrying the pole".
-- v2 also changed: grip height 22 → 20, hands 6 px ahead of the body (sweet spot moved ~0.05 s later, ≈0.5–0.55 s); plant contact swept in 0.01 rad steps.
-- Vault model = spring-chord + latch + drive (unchanged). All placeholders from `tools/`. ElevenLabs NOT connected yet (steps given 2026-10-11).
-- Verified: 47 tests pass, build OK; screenshots checked of carry, mid hand-move, poised lean, running ripple, bend, launch.
+- **v0.2.0** (JT played it): liked the improvements; asked for the pole to be "a separate object the player manages"; wants losing the pole to feel normal, not situational.
+- **v0.3.0 built, awaiting JT's feel test** (2026-10-11), in four layers:
+  1. pole = own rigid body (`poleBody.ts`) held by a capped hand spring + capped arm couple (strain visible as tremble);
+  2. input = "point the long end here": rolling directions arcs it over; the opposite direction makes the other end lead and the hands work along the whole pole;
+  3. the carried pole collides with the level (drag, jam, slides through the hands); the vaulter feels only the excess force;
+  4. losing it: yanked / pushed off the end / bonk mid-vault / S to let go; a free pole falls and settles; S picks it up (stoop, scoop on the run).
+- Plant drop now ~20 px later than v2 (the arms drive it physically). Vault model unchanged; sweet spot about 0.5-0.55 s hold.
+- Verified: 59 tests, build OK; screenshots of slide, arc, wall shove, drop, settled pole.
 
 ## Open items
-- JT's v2 feel test → tune `carry`/`beam` in `src/data/tuning.ts` (wobbliness = `beam.tipFrequency`/`damping`, weight = `carry.aimMaxAccel`/`leanFromPole`).
+- JT's v3 feel test → tune `carry` in `src/data/tuning.ts`: weight = `armTorque`, swing speed = `rotOmega`/`rotVelocityGain`, hand-walk speed = `handMoveTime`, how easily it's lost = `gripBreakStretch`/`slipStretch`, pick-up reach = `grabReach`, flip threshold = `leadFlipAngle`.
+- Next ideas from the design list: gamepad (stick = lead direction, half-circle arcs), javelin throw (release with velocity), pole-world puzzles (corridors), drag/strain sounds.
 - Connect ElevenLabs (official `elevenlabs-mcp` via `uvx`; key in agent config, never in repo), then propose prompts for approval.
 - Later: javelin-throw manoeuvre, more levels, gamepad, real art.
 

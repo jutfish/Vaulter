@@ -1,5 +1,5 @@
 import { body, carry as carryCfg, gravity, hop, pole, run, TILE } from '../data/tuning';
-import { createCarry, leadAngle, onLeftPole, onPlanted, reachOf, setIntent, setPlantSwing, stepCarry, type CarryState } from './carry';
+import { createCarry, dropPole, grabPole, leadAngle, onLeftPole, onPlanted, reachOf, setIntent, setPlantSwing, stepCarry, type CarryState, type DropReason } from './carry';
 import type { ActionFrame } from './input';
 import { Level, moveBox, type Rect } from './level';
 import { gripPosition, launchQuality, startVault, stepVault, vaultVelocity, type VaultState } from './vault';
@@ -14,6 +14,10 @@ export type GameEvent =
   | { type: 'stab' }
   /** Down let go: the pole starts to straighten. */
   | { type: 'release' }
+  /** The vaulter lost the pole (it's now a free object in the level). */
+  | { type: 'drop'; reason: DropReason }
+  /** The vaulter picked the pole up. */
+  | { type: 'pickup' }
   /** The carried pole hit or scraped the level (floor = scraping a floor/ceiling, else a wall face). */
   | { type: 'poleHit'; x: number; y: number; strength: number; floor: boolean }
   /** Vaulter leaves the pole. tipped = held so long the pole fell over. */
@@ -118,7 +122,7 @@ export function inputDirection(input: ActionFrame): number | null {
   return Math.atan2(ay, ax);
 }
 
-/** Is the pole near horizontal (either side) so that Down can plant it? */
+/** Is the pole near horizontal (either side) so that Down can plant it? (Only checked while holding it.) */
 function canPlantFromAim(aim: number): boolean {
   const fromRight = Math.abs(wrapAngle(aim));
   const fromLeft = Math.abs(wrapAngle(aim - Math.PI));
@@ -175,7 +179,16 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
 
   // --- Pole intent / plant swing ---
   const dir = inputDirection(input);
-  if (p.poleMode === 'carry') {
+  const held = p.carry.held;
+  if (input.pressed.grab && p.poleMode === 'carry') {
+    if (held) {
+      dropPole(p.carry);
+      events.push({ type: 'drop', reason: 'letGo' });
+    } else if (grabPole(p.carry, p.x, p.y, p.vx, p.vy)) {
+      events.push({ type: 'pickup' });
+    }
+  }
+  if (p.poleMode === 'carry' && p.carry.held) {
     setIntent(p.carry, dir, p.facing);
     if (input.pressed.aimDown && p.poleRecover <= 0 && canPlantFromAim(p.aim)) {
       p.poleMode = 'swing';
@@ -219,7 +232,7 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
     }
   }
 
-  stepCarry(
+  const lost = stepCarry(
     p.carry,
     {
       x: p.x,
@@ -232,17 +245,33 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       stridePhase: p.strideDistance / run.strideLength,
       allowHandMoves: p.poleMode === 'carry',
       swingRate: p.poleMode === 'swing' ? pole.plantSwingSpeed : 0,
-      solid: p.poleMode === 'swing' ? null : level,
+      level,
+      collide: p.poleMode !== 'swing',
     },
     dt,
   );
   p.aim = leadAngle(p.carry);
+  if (lost) {
+    events.push({ type: 'drop', reason: lost });
+    if (p.poleMode === 'swing') p.poleMode = 'carry';
+  }
 
   // The pole pushes back on the vaulter: only the force beyond what it takes to carry it along
   // (so running with it costs nothing, but swings, drags and jams do). Vertical only in the air.
   const h = p.carry.hold;
-  const ex = h.fx - (p.vx - vxBefore) / dt;
-  const ey = h.fy + gravity.g - (p.vy - vyBefore) / dt;
+  if (p.carry.held) applyPolePush(p, h.fx, h.fy, vxBefore, vyBefore, dt);
+  if (h.contact > POLE_HIT_EVENT) events.push({ type: 'poleHit', x: h.contact > 0 ? h.contactX : p.x, y: h.contactY, strength: h.contact, floor: h.contactFloor });
+
+  if (p.poleMode === 'swing') checkPlantContact(p, level, leadBefore, events);
+}
+
+/**
+ * The pole pushes back on the vaulter: only the force beyond what it takes to carry it along
+ * (so running with it costs nothing, but swings, drags and jams do). Vertical only in the air.
+ */
+function applyPolePush(p: Player, fx: number, fy: number, vxBefore: number, vyBefore: number, dt: number): void {
+  const ex = fx - (p.vx - vxBefore) / dt;
+  const ey = fy + gravity.g - (p.vy - vyBefore) / dt;
   let push = -ex * carryCfg.poleMassRatio;
   if (p.grounded) {
     // Feet on the ground soak up small pushes; only real hits (drags, jams, big swings) move you.
@@ -251,9 +280,6 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
     p.vy -= ey * carryCfg.poleMassRatio * dt;
   }
   p.vx += push * dt;
-  if (h.contact > POLE_HIT_EVENT) events.push({ type: 'poleHit', x: h.contactX, y: h.contactY, strength: h.contact, floor: h.contactFloor });
-
-  if (p.poleMode === 'swing') checkPlantContact(p, level, leadBefore, events);
 }
 
 /**
@@ -348,8 +374,15 @@ function stepPlanted(p: Player, level: Level, input: ActionFrame, dt: number, ev
     p.x = prevX;
     p.y = prevY;
     const vel = vaultVelocity(v);
+    const dir = v.dir;
     leavePole(p, 0, Math.max(0, vel.vy) * 0.5);
     events.push({ type: 'bonk' });
+    // Knocked off the pole: it's left standing in its plant and topples over.
+    dropPole(p.carry);
+    p.carry.pole.vx = 0;
+    p.carry.pole.vy = 0;
+    p.carry.pole.omega = dir * 1.2;
+    events.push({ type: 'drop', reason: 'bonk' });
     return;
   }
 

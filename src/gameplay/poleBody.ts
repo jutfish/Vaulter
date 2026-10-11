@@ -121,9 +121,7 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
   let strain = 0;
   let stretch = 0;
   out.contact = 0;
-  let biggest = 0;
-  let floorImpulse = 0;
-  let wallImpulse = 0;
+  const tally = { biggest: 0, floor: 0, wall: 0 };
   for (let i = 0; i < SUBSTEPS; i++) {
     const rx = Math.cos(b.theta) * u;
     const ry = Math.sin(b.theta) * u;
@@ -164,22 +162,9 @@ export function stepHeldPole(b: PoleBody, g: Grip, dt: number, out: HoldResult):
     fxSum += fx;
     fySum += fy;
 
-    if (g.solid) {
-      for (let s = 0; s <= L + 0.01; s += CONTACT_SPACING) {
-        const j = contactAt(b, g.solid, s, h);
-        if (j === null) continue;
-        out.contact += j.impulse;
-        if (j.ny * j.ny > 0.5) floorImpulse += j.impulse;
-        else wallImpulse += j.impulse;
-        if (j.impulse > biggest) {
-          biggest = j.impulse;
-          out.contactX = j.x;
-          out.contactY = j.y;
-        }
-      }
-    }
+    if (g.solid) collideAll(b, g.solid, h, out, tally);
   }
-  out.contactFloor = floorImpulse >= wallImpulse;
+  out.contactFloor = tally.floor >= tally.wall;
   out.fx = fxSum / SUBSTEPS;
   out.fy = fySum / SUBSTEPS;
   out.strain = strain;
@@ -260,4 +245,55 @@ function contactAt(b: PoleBody, solid: SolidQuery, s: number, h: number): Contac
   b.omega += (rx * iy - ry * ix) / INERTIA;
   jn = Math.hypot(ix, iy);
   return { x, y, ny, impulse: jn };
+}
+
+/** Runs every contact point once for a substep, accumulating into out/tally. */
+function collideAll(b: PoleBody, solid: SolidQuery, h: number, out: HoldResult, tally: { biggest: number; floor: number; wall: number }): void {
+  for (let s = 0; s <= L + 0.01; s += CONTACT_SPACING) {
+    const j = contactAt(b, solid, s, h);
+    if (j === null) continue;
+    out.contact += j.impulse;
+    if (j.ny * j.ny > 0.5) tally.floor += j.impulse;
+    else tally.wall += j.impulse;
+    if (j.impulse > tally.biggest) {
+      tally.biggest = j.impulse;
+      out.contactX = j.x;
+      out.contactY = j.y;
+    }
+  }
+}
+
+/**
+ * A pole nobody is holding: gravity, a little air drag on the spin, and the
+ * level's contacts. It falls, bounces, slides and settles. `out` reports contacts.
+ */
+export function stepFreePole(b: PoleBody, solid: SolidQuery, dt: number, out: HoldResult): void {
+  const h = dt / SUBSTEPS;
+  out.fx = 0;
+  out.fy = 0;
+  out.strain = 0;
+  out.stretch = 0;
+  out.contact = 0;
+  const tally = { biggest: 0, floor: 0, wall: 0 };
+  for (let i = 0; i < SUBSTEPS; i++) {
+    b.vy += gravity.g * h;
+    b.omega *= 1 - cfg.freeSpinDrag * h;
+    b.cx += b.vx * h;
+    b.cy += b.vy * h;
+    b.theta += b.omega * h;
+    // Two passes so a pole lying on the ground settles instead of jittering.
+    collideAll(b, solid, h, out, tally);
+    collideAll(b, solid, h, out, tally);
+  }
+  out.contactFloor = tally.floor >= tally.wall;
+}
+
+/** Point on the pole (s, clamped to its length) closest to (x, y), and the distance to it. */
+export function nearestOnPole(b: PoleBody, x: number, y: number): { s: number; dist: number } {
+  const ax = Math.cos(b.theta);
+  const ay = Math.sin(b.theta);
+  const e0x = b.cx - ax * (L / 2);
+  const e0y = b.cy - ay * (L / 2);
+  const s = Math.max(0, Math.min(L, (x - e0x) * ax + (y - e0y) * ay));
+  return { s, dist: Math.hypot(e0x + ax * s - x, e0y + ay * s - y) };
 }
