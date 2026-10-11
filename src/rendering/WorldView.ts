@@ -2,14 +2,14 @@ import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
 import { beam as beamCfg, body, pole, poleTiers, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
-import type { CarvedHint } from '../gameplay/hints';
+import { layoutHint, type CarvedHint, type PlacedChar } from '../gameplay/hints';
 import { Tile } from '../gameplay/level';
 import { pointAt } from '../gameplay/poleBody';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
 import { Camera } from './Camera';
 import { ParticlePool } from './effects';
-import { ADVANCE, glyphCells, LINE_HEIGHT, textWidth } from './pixelFont';
+import { glyphCells } from '../data/pixelFont';
 import { FRAME_H, FRAME_W, HANG_GRIP, type SpriteSet, type VaulterFrame } from './sprites';
 
 /** Everything the renderer needs from one simulation tick, so it can interpolate between two. */
@@ -40,6 +40,15 @@ interface Snapshot {
   handS: [number, number];
   handT: [number, number];
   beamY: Float64Array;
+}
+
+interface Carving {
+  hint: CarvedHint;
+  chars: PlacedChar[];
+  g: Graphics;
+  shown: number;
+  drawn: number;
+  total: number;
 }
 
 /** Hint text carved into the land: groove and its lit lower edge, and letters carved per second. */
@@ -120,7 +129,7 @@ export class WorldView {
   private readonly flash = new Graphics();
   /** Hints carved into the land, being carved letter by letter. */
   private readonly hintLayer = new Container();
-  private readonly carvings: { hint: CarvedHint; g: Graphics; shown: number; drawn: number; total: number }[] = [];
+  private readonly carvings: Carving[] = [];
   private prev: Snapshot;
   private curr: Snapshot;
   private runPhase = 0;
@@ -173,14 +182,19 @@ export class WorldView {
     return POLE_COLORS[poleTiers[this.world.poleTier]!.name]!;
   }
 
-  /** Starts carving a hint into the land (replacing one with the same id). */
-  carve(hint: CarvedHint): void {
+  /** Carves text into the land letter by letter (or all at once), replacing any with the same id. */
+  carve(hint: CarvedHint, instant = false): void {
     const old = this.carvings.findIndex((c) => c.hint.id === hint.id);
     if (old >= 0) this.carvings.splice(old, 1)[0]!.g.destroy();
     const g = new Graphics();
     this.hintLayer.addChild(g);
-    const total = hint.lines.reduce((n, l) => n + l.length, 0);
-    this.carvings.push({ hint, g, shown: 0, drawn: 0, total });
+    const chars = layoutHint(hint, this.world.level);
+    const carving = { hint, chars, g, shown: 0, drawn: 0, total: chars.length };
+    this.carvings.push(carving);
+    if (instant) {
+      carving.shown = carving.drawn = carving.total;
+      this.drawCarving(carving, carving.total);
+    }
   }
 
   private stepCarvings(dt: number): void {
@@ -190,31 +204,29 @@ export class WorldView {
       const n = Math.floor(c.shown);
       if (n === c.drawn) continue;
       c.drawn = n;
-      const at = this.drawCarving(c.g, c.hint, n);
+      const at = this.drawCarving(c, n);
       if (at && n % 3 === 0) this.particles.dust(at.x, at.y, 1, 30);
     }
   }
 
-  /** Draws the first n characters of a hint, centred on hint.x; returns where the last one is. */
-  private drawCarving(g: Graphics, h: CarvedHint, n: number): { x: number; y: number } | null {
+  /** Draws the first n letters of a carving; returns where the last one is. */
+  private drawCarving(c: Carving, n: number): { x: number; y: number } | null {
+    const g = c.g;
     g.clear();
     const level = this.world.level;
-    let left = n;
+    const k = c.hint.scale ?? 1;
     let last: { x: number; y: number } | null = null;
-    h.lines.forEach((line, li) => {
-      const x0 = Math.round(h.x - textWidth(line) / 2);
-      const y0 = h.y + li * LINE_HEIGHT;
-      for (let i = 0; i < line.length && left > 0; i++, left--) {
-        const cx = x0 + i * ADVANCE;
-        for (const [gx, gy] of glyphCells(line[i]!)) {
-          // Carved: a dark groove with a lit lower edge. Only into the land, never the sky.
-          if (!level.isSolidAt(cx + gx + 0.5, y0 + gy + 0.5)) continue;
-          g.rect(cx + gx, y0 + gy + 1, 1, 1).fill(CARVE_LIGHT);
-          g.rect(cx + gx, y0 + gy, 1, 1).fill(CARVE_DARK);
-        }
-        last = { x: cx + 1, y: y0 + 2 };
+    for (const ch of c.chars.slice(0, n)) {
+      for (const [gx, gy] of glyphCells(ch.ch)) {
+        const x = ch.x + gx * k;
+        const y = ch.y + gy * k;
+        // Carved: a dark groove with a lit lower edge. Only into the land, never the sky.
+        if (!level.isSolidAt(x + k / 2, y + k / 2)) continue;
+        g.rect(x, y + 1, k, k).fill(CARVE_LIGHT);
+        g.rect(x, y, k, k).fill(CARVE_DARK);
       }
-    });
+      last = { x: ch.x + k, y: ch.y + 2 * k };
+    }
     return last;
   }
 

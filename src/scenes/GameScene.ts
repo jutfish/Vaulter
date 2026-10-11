@@ -1,7 +1,7 @@
 import type { Renderer } from 'pixi.js';
 import { FixedStepLoop } from '../app/loop';
 import type { AudioEngine } from '../audio/AudioEngine';
-import { longRunHints, lostPoleHint } from '../data/hints';
+import { longRunHints, longRunWritings, lostPoleHint, winWriting } from '../data/hints';
 import { buildLongRun } from '../data/levels';
 import { MAX_FRAME_TIME, poleTiers, run, SIM_DT } from '../data/tuning';
 import { HintTracker } from '../gameplay/hints';
@@ -39,11 +39,13 @@ export class GameScene {
   private lastCount: number | null = null;
   private readonly levelId = 'long-run';
   /** Stuck timers and carved hints: kept across restarts (the land remembers). */
-  readonly hints = new HintTracker(longRunHints, lostPoleHint);
+  readonly hints: HintTracker;
 
   constructor(private readonly d: GameSceneDeps) {
     this.world = new World(buildLongRun());
     this.view = new WorldView(d.renderer, this.world, d.sprites);
+    this.hints = new HintTracker(this.world.level, longRunHints, lostPoleHint, [...longRunWritings, winWriting]);
+    for (const w of longRunWritings) this.view.carve(w, true);
     d.stage.world.addChild(this.view.root);
     d.hud.show(true);
     d.hud.setBanner(null);
@@ -56,7 +58,7 @@ export class GameScene {
         this.world.step(this.d.input.consume(), SIM_DT);
         this.view.onStep(SIM_DT, this.world.events);
         if (!this.world.cleared) {
-          for (const h of this.hints.update(this.world.player, this.world.level, SIM_DT)) {
+          for (const h of this.hints.update(this.world.player, SIM_DT)) {
             this.view.carve(h);
             this.d.audio.play('plant', { volume: 0.35, rate: 0.6 });
           }
@@ -171,6 +173,7 @@ export class GameScene {
   }
 
   private onCleared(): void {
+    this.view.carve(winWriting);
     const t = this.world.clearTime;
     const prog = this.d.progress;
     const prev = prog.value.levels[this.levelId];

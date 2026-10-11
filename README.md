@@ -70,9 +70,6 @@ last wall and the flag.
 Miss it and the next pole appears in your hands: gold, then silver, then
 bronze, then black (black to black is a count of 3). R restarts with gold.
 
-**Stuck?** Keep trying: after a while at the same spot, a hint is carved
-into the land nearby.
-
 **How to vault:** hold D and → from the start. Holding the pole
 out level makes the hands climb back to the end of the pole (watch the hands);
 plant before they get there and you vault on a shorter pole. When you're

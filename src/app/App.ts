@@ -1,7 +1,7 @@
 import { Application, Rectangle } from 'pixi.js';
 import { AudioEngine } from '../audio/AudioEngine';
 import { SIM_DT, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
-import { longRunHints } from '../data/hints';
+import { longRunHints, winWriting } from '../data/hints';
 import { resetPoleToHands } from '../gameplay/carry';
 import { InputState, type Action } from '../gameplay/input';
 import { PixelStage } from '../rendering/PixelStage';
@@ -74,8 +74,8 @@ export class App {
    *   await __vaulter.play()
    *   __vaulter.hold(['right','aimRight'], 2.5)   // hold actions for 2.5 s of game time
    *   __vaulter.state()
-   *   __vaulter.teleport(col)                     // feet on the ground at that tile column, pole in hand
-   *   __vaulter.carveHints()                      // carve every stuck hint now (to look at them)
+   *   __vaulter.teleport(col, facing, groundLevel) // feet on the top surface (or ground level) at that column, pole in hand
+   *   __vaulter.carveHints()                      // carve every stuck hint and the win line now (to look at them)
    */
   private installDevHook(): void {
     const app = this;
@@ -99,12 +99,13 @@ export class App {
         this.pixi.render();
         return hook.state();
       },
-      teleport: (col: number, facing: 1 | -1 = 1) => {
+      teleport: (col: number, facing: 1 | -1 = 1, groundLevel = false) => {
         if (!this.game) return 'no game';
         const w = this.game.world;
         const p = w.player;
         p.x = col * TILE + TILE / 2;
-        p.y = w.level.groundBelow(p.x, 0, w.level.pixelHeight) ?? p.y;
+        // The top surface there, or (groundLevel) the ground at the start's height, under any ledges.
+        p.y = (groundLevel ? w.level.groundBelow(p.x, w.level.startY - 8, 64) : w.level.groundBelow(p.x, 0, w.level.pixelHeight)) ?? p.y;
         p.vx = 0;
         p.vy = 0;
         p.facing = facing;
@@ -116,7 +117,7 @@ export class App {
       },
       carveHints: () => {
         if (!this.game) return 'no game';
-        for (const h of longRunHints) this.game.view.carve({ id: h.id, lines: h.lines, x: h.x, y: h.y });
+        for (const h of [...longRunHints, winWriting]) this.game.view.carve(h);
         return hook.hold([], 3);
       },
       state: () => {
