@@ -9,12 +9,14 @@ import type { InputState } from '../gameplay/input';
 import type { GameEvent } from '../gameplay/player';
 import { World } from '../gameplay/world';
 import type { PixelStage } from '../rendering/PixelStage';
+import { PodiumView } from '../rendering/PodiumView';
 import type { SpriteSet } from '../rendering/sprites';
 import { WorldView } from '../rendering/WorldView';
 import type { Progress } from '../saves/schemas';
 import type { SaveSlot } from '../saves/storage';
 import type { DevOverlay } from '../ui/DevOverlay';
 import type { Hud } from '../ui/Hud';
+import { Cutscene, podiumDue, type CutsceneCue } from './cutscene';
 
 export interface GameSceneDeps {
   renderer: Renderer;
@@ -40,19 +42,39 @@ export class GameScene {
   private readonly levelId = 'long-run';
   /** Stuck timers and carved hints: kept across restarts (the land remembers). */
   readonly hints: HintTracker;
+  /** The podium cutscene while it plays; it plays once per run (a restart arms it again). */
+  private cutscene: Cutscene | null = null;
+  private podiumPlayed = false;
+  private readonly podium: PodiumView;
 
   constructor(private readonly d: GameSceneDeps) {
     this.world = new World(buildLongRun());
     this.view = new WorldView(d.renderer, this.world, d.sprites);
     this.hints = new HintTracker(this.world.level, longRunHints, lostPoleHint, [...longRunWritings, winWriting]);
     for (const w of longRunWritings) this.view.carve(w, true);
-    d.stage.world.addChild(this.view.root);
+    this.podium = new PodiumView(d.sprites);
+    d.stage.world.addChild(this.view.root, this.podium.root);
     d.hud.show(true);
     d.hud.setBanner(null);
   }
 
+  /** The cutscene has the screen and the world is frozen (any key skips it). */
+  get inCutscene(): boolean {
+    return this.cutscene !== null && this.cutscene.holdsWorld;
+  }
+
+  skipCutscene(): void {
+    this.cutscene?.skip();
+  }
+
+  /** Dev: where the cutscene is (null when none is playing). */
+  cutsceneTime(): number | null {
+    return this.cutscene?.t ?? null;
+  }
+
   frame(realDt: number, paused: boolean): void {
-    if (!paused) {
+    if (!paused && this.cutscene) this.stepCutscene(Math.min(realDt, MAX_FRAME_TIME));
+    if (!paused && !this.inCutscene) {
       this.lastSteps = this.loop.advance(realDt);
       for (let i = 0; i < this.lastSteps; i++) {
         this.world.step(this.d.input.consume(), SIM_DT);
@@ -64,10 +86,16 @@ export class GameScene {
           }
         }
         this.handleEvents(this.world.events);
+        if (!this.podiumPlayed && podiumDue(this.world)) {
+          this.startCutscene();
+          break;
+        }
       }
     }
     this.tickCount();
-    this.view.render(paused ? 1 : this.loop.alpha, paused ? 0 : realDt);
+    const frozen = paused || this.inCutscene;
+    this.view.render(frozen ? 1 : this.loop.alpha, frozen ? 0 : realDt);
+    this.podium.render(this.cutscene?.frame() ?? null, paused ? 0 : realDt);
     this.d.stage.renderWorld();
     this.d.hud.update(this.world, this.d.progress.value.bestHeight, realDt);
     this.d.dev.update(performance.now(), this.lastSteps, this.world);
@@ -81,7 +109,41 @@ export class GameScene {
     this.lastCount = n;
   }
 
+  private startCutscene(): void {
+    this.podiumPlayed = true;
+    this.cutscene = new Cutscene();
+    this.d.hud.show(false);
+  }
+
+  private stepCutscene(dt: number): void {
+    const c = this.cutscene!;
+    for (const cue of c.update(dt)) this.playCue(cue);
+    // Keys pressed during the cutscene don't carry into the game (held ones still do).
+    if (c.holdsWorld) this.d.input.consume();
+    else this.d.hud.show(true);
+    if (c.done) this.cutscene = null;
+  }
+
+  private playCue(cue: CutsceneCue): void {
+    const audio = this.d.audio;
+    switch (cue) {
+      case 'medal':
+        audio.play('perfect', { volume: 0.6 });
+        audio.play('crowd_cheer', { volume: 0.7 });
+        break;
+      case 'letter':
+        audio.play('step', { volume: 0.3, rate: 2.4 + Math.random() * 0.3 });
+        break;
+      case 'lookUp':
+        audio.play('bend', { volume: 0.35, rate: 0.6 });
+        break;
+    }
+  }
+
   restart(): void {
+    this.cutscene = null;
+    this.podiumPlayed = false;
+    this.d.hud.show(true);
     this.world.reset();
     this.view.resetView();
     this.loop.reset();
@@ -91,6 +153,10 @@ export class GameScene {
 
   /** Cheat: on to just past the obstacle you're at. */
   skip(): void {
+    if (this.inCutscene) {
+      this.skipCutscene();
+      return;
+    }
     if (!this.world.skipObstacle()) {
       this.d.hud.toast('Nothing left to skip', 0.8);
       return;
@@ -109,6 +175,7 @@ export class GameScene {
 
   destroy(): void {
     this.view.root.destroy({ children: true });
+    this.podium.destroy();
     this.d.hud.show(false);
   }
 

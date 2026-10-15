@@ -104,6 +104,18 @@ rocket, then huge low-gravity jumps over craters on the moon.
 v0.7 = the stadium only (a reskin of the long run plus the competition
 bar), without the cutscene.
 
+**The podium cutscene** (built 2026-10-15, not yet played by JT): plays
+once per run when you land after clearing the bar. Fade to black, then a
+very zoomed-in (4x) pixel set: the podium (silver and bronze rivals already
+up), the little man in a suit walks in and *hops* to hang the gold round
+your neck (he's too short to reach), the crowd flashes, you wave, "NOW
+WHAT???" types out in a speech bubble, you slump, then look up and the
+camera tilts to the moon (its bottom edge already peeks in at the top
+right). Fade back to the world, where you left off on the mat. 9 s; any
+key except Esc/P/R/M skips it (straight to the fade back). Script and
+timings: `src/data/cutscene.ts`; sequencing (pure, tested):
+`src/scenes/cutscene.ts`; drawing: `src/rendering/PodiumView.ts`.
+
 ## Feedback the player must get
 - The pole visibly bends in proportion to stored energy.
 - A clear audio/visual cue at plant and at release, strongest at a perfect release.

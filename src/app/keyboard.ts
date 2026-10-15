@@ -36,9 +36,14 @@ export class Keyboard {
   private readonly onUp = (e: KeyboardEvent) => this.handle(e, false);
   private readonly onBlur = () => this.input.releaseAll();
 
+  /**
+   * @param intercept Sees every fresh key press first (by KeyboardEvent.code); returning true
+   * swallows it (e.g. any key skips a cutscene).
+   */
   constructor(
     private readonly input: InputState,
     private readonly onCommand: (c: Command) => void,
+    private readonly intercept: (code: string) => boolean = () => false,
   ) {
     window.addEventListener('keydown', this.onDown);
     window.addEventListener('keyup', this.onUp);
@@ -49,6 +54,10 @@ export class Keyboard {
     // Don't steal keys from form controls (settings sliders etc.) except Escape.
     const target = e.target as HTMLElement | null;
     if (target && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(target.tagName) && e.code !== 'Escape') return;
+    if (down && !e.repeat && this.intercept(e.code)) {
+      e.preventDefault();
+      return;
+    }
 
     const action = GAMEPLAY_KEYS[e.code];
     if (action) {

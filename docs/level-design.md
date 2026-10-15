@@ -80,6 +80,10 @@ doesn't break the tests.
    release than usual (faster run → earlier release).
 7. Two **potholes**, the **last wall** (64 px), the flag.
 
+After a clean clearance, the first landing starts the podium cutscene (once
+per run; the world is frozen while it plays and resumes as it fades back in;
+see `docs/design-intent.md`).
+
 ### Checkpoints and the skip cheat (v0.7)
 
 `LevelData.checkpoints`: a landing spot just past each obstacle, in course

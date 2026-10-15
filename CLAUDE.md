@@ -14,17 +14,18 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - Read `docs/design-intent.md` and `docs/vault-physics.md` at the start of any session that touches movement or the vault.
 
 ## Current state (2026-10-15)
-- **Live:** v0.7.0, the stadium + N skip cheat, at https://jutfish.github.io/Vaulter/ (pushed to main 2026-10-15). 79 tests, build OK. JT: the stadium "looks great".
+- **Live:** v0.8.0 (the stadium, N skip cheat, podium cutscene) at https://jutfish.github.io/Vaulter/ (pushed to main 2026-10-15). 85 tests, build OK. JT: the stadium "looks great"; JT is sharing the link with friends.
 - **Vision (JT):** discover what the pole can do, then execute it; fiddly-to-find but satisfying tricks (the backwards jump is the model); chaos and old-school difficulty are good. **Story: win Olympic gold, "now what???", look up at the moon, vault your way there** (stadium → traffic → building → scaffolding/cranes → helicopter → planes → rocket → moon). It should feel like one continuous world; each setting short. See `docs/design-intent.md`.
 - **Level = the stadium** (night, moon always visible; looks by `LevelData.zones`, see `docs/level-design.md`): the long run (`buildLongRun`, `CourseBuilder`, `longRunMarks`): the competition bar (40 px, `LevelData.bar`, `World.bar`; knock it → crowd "ahhh" + scoreboard "PRESS R: TRY AGAIN"), steeplechase-water potholes, hills (45° slope tiles), plateau, the backwards-vault switchback (ledge then upper tier), long downslope into the 80 px big wall, potholes, last wall. `tests/course.test.ts` plays it start to flag.
 - **Pole:** own rigid body held by the hands; strict contacts (out the way it came in, positional); plant drop collides with walls/ceilings. Gold → silver → bronze → black poles: lose it → 9 s knock-down count (HUD) → next pole in hand; black→black 3 s; R = gold (`World.countPoleLoss`, `poleTiers`). Bronze confirmed by JT.
 - **Words in the land** (`src/data/hints.ts`): intro line, "HOP TO IT." (backwards jump), "DON'T LET THIS OPPORTUNITY SLIP AWAY." (down the long slope), win line (carved on finishing), lost-pole note (3 s without the pole; placed clear of all other text). Stuck-timer hint mechanism exists but is unused.
+- **Podium cutscene (live in v0.8.0; JT pushed it before playing it):** after clearing the bar, 9 s, any key skips; `src/data/cutscene.ts`, `src/scenes/cutscene.ts`, `src/rendering/PodiumView.ts`, `tests/cutscene.test.ts` (85 tests, build OK). Dev: `__vaulter.cutscene()`, `__vaulter.skipCutscene()`.
 - **Not yet played by JT:** strict contacts, pole tiers, the new words. JT hadn't yet beaten the big wall (tip: full speed down the slope, plant on the flat 7–10 tiles out, release ~0.4 s).
 - Browser-pane screenshots sometimes show only the top-left quarter of the page magnified (pane quirk, not a game bug): wait 1 s and retry, or draw `__vaulter.snapshot()` into a 50vw x 50vh img.
 
 ## Open items
 - JT's play → the stadium look; the bar (knocking it doesn't block you: should it?); strict contacts, pole tiers, big wall difficulty.
-- Next story steps: the opening cutscene (podium, medal, "now what???", moon), then moving platforms (traffic).
+- Next story step: moving platforms (traffic). JT's feedback on the podium cutscene.
 - JT will reword hints; the lost-pole note still says "press R to restart" (misleading now that a new pole appears).
 - Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
 - Carved hints aren't saved between sessions; `firstWall` level is used by tests/probes only (no level select).

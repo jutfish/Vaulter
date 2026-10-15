@@ -13,7 +13,10 @@ import { DevOverlay } from '../ui/DevOverlay';
 import { bindActions, el, showScreen, type ScreenId } from '../ui/dom';
 import { Hud } from '../ui/Hud';
 import { SettingsPanel } from '../ui/SettingsPanel';
-import { Keyboard, type Command } from './keyboard';
+import { COMMAND_KEYS, Keyboard, type Command } from './keyboard';
+
+/** Keys that keep their usual job during a cutscene (every other key skips it). */
+const CUTSCENE_PASS: ReadonlySet<Command> = new Set(['pause', 'restart', 'mute', 'devOverlay']);
 
 type Mode = 'menu' | 'loading' | 'playing' | 'paused';
 
@@ -51,7 +54,11 @@ export class App {
     this.stage = new PixelStage(this.pixi);
     window.addEventListener('resize', () => this.stage.resize());
 
-    new Keyboard(this.input, (c) => this.onCommand(c));
+    new Keyboard(
+      this.input,
+      (c) => this.onCommand(c),
+      (code) => this.skipCutsceneKey(code),
+    );
     this.bindScreens();
     this.watchFocus();
     this.hud.setMuted(this.settings.value.muted);
@@ -76,6 +83,8 @@ export class App {
    *   __vaulter.state()
    *   __vaulter.teleport(col, facing, groundLevel) // feet on the top surface (or ground level) at that column, pole in hand
    *   __vaulter.carveHints()                      // carve every stuck hint and the win line now (to look at them)
+   *   __vaulter.cutscene()                        // seconds into the podium cutscene (null if none); hold([], s) plays it on
+   *   __vaulter.skipCutscene()                    // as any key does
    */
   private installDevHook(): void {
     const app = this;
@@ -120,6 +129,8 @@ export class App {
         for (const h of [...longRunHints, winWriting]) this.game.view.carve(h);
         return hook.hold([], 3);
       },
+      cutscene: () => this.game?.cutsceneTime() ?? null,
+      skipCutscene: () => this.game?.skipCutscene(),
       state: () => {
         const w = this.game?.world;
         if (!w) return null;
@@ -153,8 +164,10 @@ export class App {
         }) as HTMLCanvasElement;
         const view = this.game!.view.camera.viewOrigin(1);
         const p = this.game!.world.player;
-        const x0 = Math.round(p.x - view.x - w / 2);
-        const y0 = Math.round(p.y - view.y - h * 0.7);
+        // During a cutscene: around the middle of the screen instead of the player.
+        const cut = this.game!.cutsceneTime() !== null;
+        const x0 = cut ? Math.round((VIEW_WIDTH - w) / 2) : Math.round(p.x - view.x - w / 2);
+        const y0 = cut ? Math.round((VIEW_HEIGHT - h) / 2) : Math.round(p.y - view.y - h * 0.7);
         const out = document.createElement('canvas');
         out.width = w * scale;
         out.height = h * scale;
@@ -257,6 +270,15 @@ export class App {
 
   private closeSettings(): void {
     showScreen(this.settingsReturn);
+  }
+
+  /** Any key (bar pause, restart, mute and the dev overlay) skips the cutscene, and does nothing else. */
+  private skipCutsceneKey(code: string): boolean {
+    if (this.mode !== 'playing' || !this.game?.inCutscene) return false;
+    const c = COMMAND_KEYS[code];
+    if (c && CUTSCENE_PASS.has(c)) return false;
+    this.game.skipCutscene();
+    return true;
   }
 
   private onCommand(c: Command): void {

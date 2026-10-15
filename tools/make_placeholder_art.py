@@ -4,10 +4,15 @@ Offline only (never run by the game). Requires Pillow:  pip install pillow
 Run from the project root:  python tools/make_placeholder_art.py
 
 Outputs
-  vaulter.png  - 10 frames of 16x32, laid out horizontally (see FRAMES)
+  vaulter.png  - 14 frames of 16x32, laid out horizontally (see FRAMES); the last
+                 four (stand, wave, sad, lookUp) have arms drawn in, for the podium cutscene
   tiles.png    - 16x16 tiles in TILES order: grass top, dirt, wall face, wall top, then
                  the stadium set (track, concrete, seating, ad boards, roof, tarmac, mat)
   flag.png     - 16x32 finish flag
+  podium.png   - 56x22 victory podium: 2nd (left), 1st (centre), 3rd (right)
+  official.png - 4 frames of 16x32: the little man in a suit and tie (stand, walk1, walk2, reach)
+  rivals.png   - 2 frames of 16x32: the silver and bronze vaulters (palette swaps of "stand")
+  medal.png    - 3 frames of 5x8: gold, silver, bronze medal on a ribbon (anchor 2, 1)
 Frame order and anchors are mirrored in src/rendering/sprites.ts.
 """
 
@@ -27,7 +32,8 @@ SHOE = (245, 245, 245, 255)
 OUTLINE = (24, 20, 28, 255)
 
 FW, FH = 16, 32
-FRAMES = ["idle", "run1", "run2", "run3", "run4", "rise", "fall", "hang", "pike", "land"]
+FRAMES = ["idle", "run1", "run2", "run3", "run4", "rise", "fall", "hang", "pike", "land",
+          "stand", "wave", "sad", "lookUp"]
 
 
 def px(d: ImageDraw.ImageDraw, x: int, y: int, c) -> None:
@@ -137,7 +143,48 @@ def frame_land(d):
     shoe(d, 10, 31)
 
 
-def outline(img: Image.Image) -> Image.Image:
+def frame_stand(d):
+    """On the podium: arms by the sides."""
+    standing(d, [(7, 20, 7, 30), (8, 20, 9, 30)])
+    arm(d, 8, 11, 8, 17)
+
+
+def frame_wave(d):
+    """Champion: one arm up."""
+    standing(d, [(7, 20, 7, 30), (8, 20, 9, 30)])
+    arm(d, 9, 11, 11, 5)
+    rect(d, 11, 3, 12, 4, SKIN)
+
+
+def frame_sad(d):
+    """Now what? Head hung forward and down, shoulders slumped, arms limp."""
+    torso(d, 6, 11, 6)
+    shorts(d, 6, 17)
+    for (x0, y0, x1, y1) in [(7, 20, 7, 30), (8, 20, 9, 30)]:
+        leg(d, x0, y0, x1, y1)
+        shoe(d, x1 - 1, 31)
+    rect(d, 7, 9, 10, 12, SKIN)
+    rect(d, 7, 9, 10, 9, HAIR)
+    rect(d, 7, 10, 7, 11, HAIR)
+    px(d, 10, 12, SKIN_DARK)  # eye, looking at the floor
+    arm(d, 9, 12, 10, 18)
+
+
+def frame_look_up(d):
+    """Looking up at the moon: head tipped back, face to the sky."""
+    torso(d, 6, 10)
+    shorts(d, 6, 17)
+    for (x0, y0, x1, y1) in [(7, 20, 7, 30), (8, 20, 9, 30)]:
+        leg(d, x0, y0, x1, y1)
+        shoe(d, x1 - 1, 31)
+    rect(d, 6, 6, 9, 9, SKIN)
+    rect(d, 6, 6, 6, 9, HAIR)
+    rect(d, 6, 9, 8, 9, HAIR)
+    px(d, 9, 6, SKIN_DARK)  # eye, up at the sky
+    arm(d, 8, 11, 7, 17)
+
+
+def outline(img: Image.Image, cell_w: int = FW) -> Image.Image:
     """1px dark outline around opaque pixels (keeps the sprite readable on any background)."""
     src = img.load()
     out = img.copy()
@@ -151,7 +198,7 @@ def outline(img: Image.Image) -> Image.Image:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < w and 0 <= ny < h and src[nx, ny][3] != 0 and src[nx, ny] != OUTLINE:
                     # Only outline within the frame cell.
-                    if nx // FW == x // FW:
+                    if nx // cell_w == x // cell_w:
                         dst[x, y] = OUTLINE
                         break
     return out
@@ -176,6 +223,14 @@ def make_vaulter() -> None:
             frame_pike(d)
         elif name == "land":
             frame_land(d)
+        elif name == "stand":
+            frame_stand(d)
+        elif name == "wave":
+            frame_wave(d)
+        elif name == "sad":
+            frame_sad(d)
+        elif name == "lookUp":
+            frame_look_up(d)
         sheet.paste(cell, (i * FW, 0))
     outline(sheet).save(OUT / "vaulter.png")
 
@@ -317,9 +372,120 @@ def make_flag() -> None:
     img.save(OUT / "flag.png")
 
 
+# --- The podium cutscene ---------------------------------------------------
+
+# 3x5 digits (as in src/data/pixelFont.ts).
+DIGITS = {"1": ".#.|##.|.#.|.#.|###", "2": "##.|..#|.#.|#..|###", "3": "##.|..#|.#.|..#|##."}
+
+
+def make_podium() -> None:
+    """Three blocks on one baseline (bottom row = the ground): 2nd 18 wide 14 high, 1st 20x22, 3rd 18x10."""
+    img = Image.new("RGBA", (56, 22), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    face, top, side, edge = (226, 226, 220, 255), (250, 250, 246, 255), (176, 176, 172, 255), (120, 120, 126, 255)
+    for (x0, x1, y0, digit, band) in ((0, 17, 8, "2", (190, 196, 206, 255)), (18, 37, 0, "1", (232, 192, 56, 255)),
+                                      (38, 55, 12, "3", (200, 128, 60, 255))):
+        rect(d, x0, y0, x1, 21, face)
+        rect(d, x0, y0, x1, y0 + 1, top)
+        d.line((x0, y0 + 2, x1, y0 + 2), fill=band)
+        d.line((x1, y0 + 2, x1, 21), fill=side)
+        d.line((x0, y0, x0, 21), fill=edge)
+        d.line((x0, 21, x1, 21), fill=edge)
+        cx = (x0 + x1) // 2 - 1
+        for gy, row in enumerate(DIGITS[digit].split("|")):
+            for gx, ch in enumerate(row):
+                if ch == "#":
+                    px(d, cx + gx, y0 + 4 + gy, edge)
+    img.save(OUT / "podium.png")
+
+
+SUIT, SUIT_DARK = (48, 50, 68, 255), (32, 32, 46, 255)
+WHITE, TIE, GREY, BLACK = (244, 244, 240, 255), (204, 40, 48, 255), (176, 176, 182, 255), (20, 20, 24, 255)
+OFFICIAL_FRAMES = ["stand", "walk1", "walk2", "reach"]
+
+
+def official(d, name: str) -> None:
+    """A little man (20 px to the vaulter's 26) in a suit and tie, balding, with a grey moustache. Faces right."""
+    rect(d, 6, 12, 9, 15, SKIN)
+    rect(d, 6, 12, 6, 14, GREY)
+    px(d, 7, 13, GREY)
+    px(d, 9, 13, SKIN_DARK)  # eye
+    px(d, 9, 15, GREY)  # moustache
+    rect(d, 6, 16, 9, 23, SUIT)
+    px(d, 8, 16, WHITE)
+    px(d, 9, 16, WHITE)
+    for y in range(17, 21):
+        px(d, 9, y, TIE)
+    legs = {
+        "stand": [(7, 24, 7, 30), (8, 24, 8, 30)],
+        "reach": [(7, 24, 7, 30), (8, 24, 8, 30)],
+        "walk1": [(7, 24, 5, 30), (8, 24, 10, 30)],
+        "walk2": [(7, 24, 7, 30), (8, 24, 9, 29)],
+    }[name]
+    for i, (x0, y0, x1, y1) in enumerate(legs):
+        d.line((x0, y0, x1, y1), fill=SUIT_DARK if i == 0 else SUIT)
+        rect(d, x1 - 1 + i, y1 + 1, x1 + i, y1 + 1, BLACK)
+    if name == "reach":
+        d.line((9, 17, 11, 13), fill=SUIT_DARK)
+        rect(d, 12, 11, 12, 12, SKIN)  # hand (the medal hangs from it: anchor 12, 11)
+    else:
+        d.line((8, 17, 8, 22), fill=SUIT_DARK)
+        px(d, 8, 23, SKIN)  # hand (anchor 8, 23)
+
+
+def make_official() -> None:
+    sheet = Image.new("RGBA", (FW * len(OFFICIAL_FRAMES), FH), (0, 0, 0, 0))
+    for i, name in enumerate(OFFICIAL_FRAMES):
+        cell = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+        official(ImageDraw.Draw(cell), name)
+        sheet.paste(cell, (i * FW, 0))
+    outline(sheet).save(OUT / "official.png")
+
+
+def make_rivals() -> None:
+    """The silver and bronze medallists: the vaulter's podium pose in other kit."""
+    swaps = [
+        {SHIRT: (52, 96, 196, 255), SHIRT_DARK: (34, 64, 140, 255), HAIR: (224, 192, 96, 255)},
+        {SHIRT: (60, 160, 90, 255), SHIRT_DARK: (40, 110, 60, 255), SKIN: (150, 100, 66, 255),
+         SKIN_DARK: (106, 68, 46, 255), HAIR: (24, 20, 20, 255), SHORTS: (230, 230, 226, 255)},
+    ]
+    sheet = Image.new("RGBA", (FW * len(swaps), FH), (0, 0, 0, 0))
+    for i, swap in enumerate(swaps):
+        cell = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+        frame_stand(ImageDraw.Draw(cell))
+        pix = cell.load()
+        for y in range(FH):
+            for x in range(FW):
+                if pix[x, y] in swap:
+                    pix[x, y] = swap[pix[x, y]]
+        sheet.paste(cell, (i * FW, 0))
+    outline(sheet).save(OUT / "rivals.png")
+
+
+def make_medal() -> None:
+    """Gold, silver, bronze: a ribbon from the neck and a 3x3 disc, side on. Drawn 1 px in from the cell edge for the outline."""
+    mw, mh = 5, 8
+    metals = [((240, 200, 56, 255), (255, 240, 150, 255), (176, 132, 24, 255)),
+              ((200, 206, 214, 255), (246, 248, 252, 255), (130, 138, 150, 255)),
+              ((204, 128, 60, 255), (240, 180, 120, 255), (140, 80, 34, 255))]
+    ribbon = (52, 96, 196, 255)
+    sheet = Image.new("RGBA", (mw * len(metals), mh), (0, 0, 0, 0))
+    d = ImageDraw.Draw(sheet)
+    for i, (base, light, dark) in enumerate(metals):
+        ox, oy = i * mw + 1, 1
+        rect(d, ox + 1, oy, ox + 1, oy + 2, ribbon)
+        rect(d, ox, oy + 3, ox + 2, oy + 5, base)
+        px(d, ox, oy + 3, light)
+        px(d, ox + 2, oy + 5, dark)
+    outline(sheet, mw).save(OUT / "medal.png")
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     make_vaulter()
     make_tiles()
     make_flag()
+    make_podium()
+    make_official()
+    make_rivals()
+    make_medal()
     print(f"wrote sprites to {OUT}")
