@@ -125,9 +125,11 @@ export class Cutscene {
     return cues;
   }
 
-  /** Straight to black, then fade back into the world. */
-  skip(): void {
+  /** Straight to black, then fade back into the world. Not in the first moments (see `skipAfter`). */
+  skip(): boolean {
+    if (this.t < podium.skipAfter) return false;
     this.t = Math.max(this.t, podium.end - podium.fade);
+    return true;
   }
 
   frame(): PodiumFrame {

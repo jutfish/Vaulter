@@ -84,6 +84,18 @@ describe('the podium cutscene', () => {
     expect(c.done).toBe(true);
   });
 
+  it("keys still pressed from the landing can't skip it before it's been seen", () => {
+    const c = new Cutscene();
+    c.update(0.05);
+    expect(c.skip()).toBe(false);
+    c.update(podium.skipAfter - 0.1);
+    expect(c.skip()).toBe(false);
+    expect(c.holdsWorld).toBe(true);
+    c.update(0.1);
+    expect(c.skip()).toBe(true);
+    expect(c.holdsWorld).toBe(false);
+  });
+
   it('is due when the champion lands after clearing the bar, not before', () => {
     const world = new World(buildLongRun());
     const atX = (m.barCol + 1) * TILE - 120;

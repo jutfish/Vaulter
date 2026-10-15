@@ -11,6 +11,9 @@ export const podium = {
   fade: 0.3,
   /** Total length, including the fade back into the world. */
   end: 9,
+  /** Key presses can't skip it before this: you land from the vault still pressing keys, and
+   *  those would skip it before it was ever seen (presses before this are just swallowed). */
+  skipAfter: 1.2,
   /** The top of each step: 1st in the middle, 2nd to the left, 3rd to the right. */
   steps: { first: { x: 0, y: -22 }, second: { x: -19, y: -14 }, third: { x: 19, y: -10 } },
   /** The little man walks in from the right to just in front of the top step... */
