@@ -24,13 +24,40 @@ planted tip collide with the diagonal exactly (a plant on a slope lands on the
 slope surface). Planting while running *down* a slope onto flat ground plants
 the pole nearly level: you fall back. Get to the flat first.
 
-## The long run (v0.4), left to right
+## Looks (zones, v0.7)
+
+`LevelData.zones` sets the look of the land from a column on (rendering
+only; no physics): `Level.themeAt(tx)`, used by `WorldView` to choose tiles,
+slope colours and carving colours. Without zones a level keeps the old
+daytime grass-and-stone look (`firstWall`).
+
+| Theme | Top / body tiles | Walls (`B`) | What it is |
+|---|---|---|---|
+| track | `track` (red tartan) / `concrete` | concrete | the running track; its pits hold steeplechase water (drawn in front of the vaulter) |
+| infield | `grass` / `dirt` | stone | the infield (the hills) |
+| stand | `concreteTop` / `concrete`; ground raised above the track and floating tiers are `seats` | `adBoard` | the stands: lower stand (plateau), hoarding (plateau wall), the seating switchback |
+| roof | `roofTop` / `roof` (lit window slits) | roof | the cliff top and the slide down the outside |
+| outside | `tarmac` / `dirt` (potholes go down to the earth) | stone | the car park, the perimeter wall (big wall), the last wall |
+
+Stadium backdrop (`src/rendering/stadium.ts`, painted once into canvases,
+seeded): a banded night sky, slow stars, **the moon** (screen-fixed, top
+right, always visible), the city skyline (parallax 0.2) and the far stand
+full of people under floodlights (parallax 0.5; it ends about where the
+near stand's cliff is). The land gets a night tint. The crowd flashes
+cameras and bounces when you clear the bar.
+
+## The long run (v0.4; the stadium since v0.7), left to right
 
 `CourseBuilder` lays columns left to right with a running ground height;
 landmarks (`longRunMarks`) are computed as it goes, so moving a section
 doesn't break the tests.
 
-1. **Run-up** (~850 px) and a **warm-up wall** (32 px).
+1. **Run-up** (~850 px) and **the competition bar** (40 px, `LevelData.bar`;
+   the Olympic final) with a landing mat and the scoreboard. Touch the bar,
+   or pass it with your feet below it (ran under), and it falls: the crowd
+   groan and the scoreboard says `NO JUMP! / PRESS R: TRY AGAIN`. Over it
+   clean: cheering and `GOLD MEDAL! / OLYMPIC CHAMPION`. Knocking it doesn't
+   stop you carrying on (`World.bar`, events `barKnocked` / `barCleared`).
 2. **Potholes** 2, 3, 4, 5, 6 tiles wide, 1 deep. A hop at a sprint covers
    ~10 tiles; too slow, too early or a short hop and you're in the hole (hop
    out, rebuild speed). A carried pole can dip into them.
@@ -53,12 +80,30 @@ doesn't break the tests.
    release than usual (faster run → earlier release).
 7. Two **potholes**, the **last wall** (64 px), the flag.
 
-### Timing windows (probe, 2026-10-11)
+### Checkpoints and the skip cheat (v0.7)
+
+`LevelData.checkpoints`: a landing spot just past each obstacle, in course
+order (bar, five pits, plateau, plateau wall, ledge, tier, big wall, two
+pits, last wall), each with the columns and height that count as "got
+there". `World.checkpoint` is the furthest reached (on the ground there);
+**N** (`World.skipObstacle`) puts you on the next one, standing, pole in
+hand (same pole tier). Tests: a real run reaches every checkpoint in order;
+skipping lands on each one.
+
+### Timing windows (probe, 2026-10-11; the bar 2026-10-15)
 
 Rows = how far before the obstacle Down is pressed (px), columns = hold after
 the plant (s). `OK` = made it, pole still in hand.
 
 ```
+The competition bar (40 px), at full speed (OK = cleared, x = knocked)
+   d    0.20  0.25  0.30  0.35  0.40  0.45  0.50  0.55  0.60
+  80       .     .     .     x     x     x     x     x     x
+ 100       .     .     .    OK    OK    OK    OK    OK    OK
+ 120       .     .     .     x    OK    OK    OK    OK    OK
+ 140       .     .     .     .    OK    OK    OK    OK    OK
+ 160       .     .     .     .     x    OK    OK    OK    OK
+ 180       .     .     .     .     .     x    OK    OK    OK
 Backwards onto the ledge (running right at full speed; d = before the cliff face; Left after release)
    d    0.20  0.25  0.30  0.35  0.40
  120       .    OK    OK     .     .

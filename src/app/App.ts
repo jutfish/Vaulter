@@ -268,6 +268,9 @@ export class App {
           else this.resume();
         } else if (this.mode === 'menu' && !el('#screen-settings').hidden) this.closeSettings();
         break;
+      case 'skip':
+        if (this.mode === 'playing') this.game?.skip();
+        break;
       case 'restart':
         if (this.mode === 'playing') this.game?.restart();
         break;

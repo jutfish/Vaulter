@@ -84,6 +84,90 @@ def make_sfx() -> None:
     write("land", mix(noise_burst(0.12, 0.3, 7, 0.8), tone(lambda t: 90 - 120 * t, 0.1, math.sin, 6, gain=0.7)))
     write("bonk", mix(tone(lambda t: 160 - 300 * t, 0.18, square, 6, gain=0.35), noise_burst(0.06, 0.6, 9, 0.4)))
     write("ui_click", tone(lambda t: 880, 0.05, square, 8, gain=0.2))
+    make_crowd()
+
+
+def bandpass(samples: list[float], freq: float, q: float) -> list[float]:
+    """RBJ biquad band-pass (constant peak gain)."""
+    w = 2 * math.pi * freq / RATE
+    alpha = math.sin(w) / (2 * q)
+    b0, b2 = alpha, -alpha
+    a0, a1, a2 = 1 + alpha, -2 * math.cos(w), 1 - alpha
+    x1 = x2 = y1 = y2 = 0.0
+    out = []
+    for x in samples:
+        y = (b0 * x + b2 * x2 - a1 * y1 - a2 * y2) / a0
+        x2, x1, y2, y1 = x1, x, y1, y
+        out.append(y)
+    return out
+
+
+def crowd_voices(dur: float, n: int, pitch_fn, env_fn, vowel: tuple, breath: float) -> list[float]:
+    """n voices (buzzy pulse waves at scattered pitches) shaped into a vowel by formant filters."""
+    total = int(dur * RATE)
+    src = [0.0] * total
+    for _ in range(n):
+        f0 = rng.uniform(110, 300)
+        start = rng.uniform(0, 0.12)
+        wobble = rng.uniform(3, 6)
+        phase = rng.uniform(0, 1)
+        for i in range(int(start * RATE), total):
+            t = i / RATE
+            phase += f0 * pitch_fn(t) * (1 + 0.02 * math.sin(t * wobble * 6.28)) / RATE
+            phase -= math.floor(phase)
+            src[i] += (1.0 - 2 * phase) * env_fn(t - start)
+    for i in range(total):
+        src[i] += rng.uniform(-1, 1) * breath * env_fn(i / RATE) * n * 0.2
+    out = [0.0] * total
+    for (f, q, g) in vowel:
+        for i, v in enumerate(bandpass(src, f, q)):
+            out[i] += v * g
+    return out
+
+
+def make_crowd() -> None:
+    # Its own random stream, so adding crowd sounds doesn't change the music.
+    global rng
+    saved, rng = rng, random.Random(99)
+    try:
+        _make_crowd()
+    finally:
+        rng = saved
+
+
+def _make_crowd() -> None:
+    # Disappointed "ahhhh": the vowel "ah", every voice sliding down together.
+    ah = ((750, 6, 1.0), (1150, 7, 0.6), (2500, 9, 0.2))
+    ahh = crowd_voices(
+        1.9, 36,
+        lambda t: 1.18 - 0.38 * min(1.0, t / 1.6),
+        lambda t: 0.0 if t < 0 else min(1.0, t / 0.18) * math.exp(-max(0.0, t - 0.5) * 2.2),
+        ah, 0.25,
+    )
+    write("crowd_ahh", ahh)
+    # Cheer: "yeahh" rising, applause crackle and a couple of whistles.
+    eh = ((560, 6, 1.0), (1800, 8, 0.5), (2600, 9, 0.2))
+    cheer = crowd_voices(
+        2.6, 40,
+        lambda t: 1.0 + 0.25 * min(1.0, t / 0.3),
+        lambda t: 0.0 if t < 0 else min(1.0, t / 0.08) * math.exp(-max(0.0, t - 0.9) * 1.6),
+        eh, 0.35,
+    )
+    total = len(cheer)
+    clap = [0.0] * total
+    for _ in range(900):
+        i0 = int(rng.uniform(0, 2.4) * RATE)
+        amp = rng.uniform(0.3, 1.0) * math.exp(-max(0.0, i0 / RATE - 1.0) * 1.4)
+        for k in range(min(120, total - i0)):
+            clap[i0 + k] += rng.uniform(-1, 1) * amp * math.exp(-k / 25)
+    clap = bandpass(clap, 1800, 0.8)
+    peak_v = max(abs(v) for v in cheer) or 1
+    peak_c = max(abs(v) for v in clap) or 1
+    whistles = []
+    for k, t0 in enumerate((0.25, 0.9)):
+        f1 = 1900 + 300 * k
+        whistles = mix(whistles, [0.0] * int(t0 * RATE) + tone(lambda t, f1=f1: f1 + 500 * min(1, t / 0.25) - 200 * max(0, t - 0.35), 0.6, math.sin, 2.5, 0.03, 0.12))
+    write("crowd_cheer", mix([v / peak_v * 0.7 for v in cheer], [v / peak_c * 0.35 for v in clap], whistles))
 
 
 def make_music() -> None:

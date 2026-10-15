@@ -22,6 +22,8 @@ this repo.
 | land | land.wav | Noise thump | Landing on a mat / ground, scaled by speed |
 | bonk | bonk.wav | Falling square + noise | Comic but not silly bump into a wall |
 | ui_click | ui_click.wav | Square tick | Soft menu click |
+| crowd_ahh | crowd_ahh.wav | 36 buzzy voices through "ah" formants, sliding down together | A stadium crowd's disappointed "ahhhh" (~2 s) |
+| crowd_cheer | crowd_cheer.wav | Voices through "eh" formants, rising, applause crackle, two whistles | A stadium crowd erupting for a gold-medal clearance (~2.5 s) |
 | music:main | music_loop.wav | 8-bar 120 bpm chiptune loop | Upbeat, light, loopable track (Track & Field energy, not frantic) |
 
 ## ElevenLabs

@@ -8,7 +8,23 @@ export const FRAME_H = 32;
 /** Pixel (in the frame) where the hands grip the pole while hanging. */
 export const HANG_GRIP = { x: 8, y: 2 };
 
-export const TILE_FRAMES = ['grass', 'dirt', 'wall', 'wallTop'] as const;
+/** Mirrors TILES in tools/make_placeholder_art.py. */
+export const TILE_FRAMES = [
+  'grass',
+  'dirt',
+  'wall',
+  'wallTop',
+  'track',
+  'concreteTop',
+  'concrete',
+  'seats',
+  'adBoard',
+  'adBoardTop',
+  'roofTop',
+  'roof',
+  'tarmac',
+  'mat',
+] as const;
 export type TileFrame = (typeof TILE_FRAMES)[number];
 
 export const SPRITE_FILES = {

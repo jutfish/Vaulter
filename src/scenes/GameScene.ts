@@ -89,6 +89,19 @@ export class GameScene {
     this.d.hud.setBanner(null);
   }
 
+  /** Cheat: on to just past the obstacle you're at. */
+  skip(): void {
+    if (!this.world.skipObstacle()) {
+      this.d.hud.toast('Nothing left to skip', 0.8);
+      return;
+    }
+    this.view.resetView();
+    this.loop.reset();
+    this.d.input.consume();
+    this.d.audio.play('ui_click', { volume: 0.6 });
+    this.d.hud.toast('SKIPPED', 0.6);
+  }
+
   /** Drop accumulated time (after a pause or tab switch) so nothing jumps. */
   resetClock(): void {
     this.loop.reset();
@@ -149,6 +162,13 @@ export class GameScene {
           } else if (e.quality > 0.5) {
             this.d.hud.toast('Good', 0.6);
           }
+          break;
+        case 'barKnocked':
+          audio.play('bonk', { volume: 0.4, rate: 1.6 });
+          audio.play('crowd_ahh', { volume: 0.9 });
+          break;
+        case 'barCleared':
+          audio.play('crowd_cheer', { volume: 0.9 });
           break;
         case 'fellBack':
           this.d.hud.toast('Not enough speed', 0.8);

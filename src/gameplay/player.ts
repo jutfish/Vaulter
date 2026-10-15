@@ -25,7 +25,10 @@ export type GameEvent =
   /** Vaulter leaves the pole. tipped = held so long the pole fell over. */
   | { type: 'launch'; quality: number; perfect: boolean; tipped: boolean }
   | { type: 'fellBack' }
-  | { type: 'bonk' };
+  | { type: 'bonk' }
+  /** The competition bar: over it clean, or knocked off (or run under). */
+  | { type: 'barCleared' }
+  | { type: 'barKnocked'; x: number; y: number };
 
 export type PoleMode = 'carry' | 'swing' | 'planted';
 

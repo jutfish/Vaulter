@@ -9,6 +9,8 @@ export const SOUND_FILES = {
   land: 'assets/audio/land.wav',
   bonk: 'assets/audio/bonk.wav',
   ui_click: 'assets/audio/ui_click.wav',
+  crowd_ahh: 'assets/audio/crowd_ahh.wav',
+  crowd_cheer: 'assets/audio/crowd_cheer.wav',
 } as const;
 
 export const MUSIC_FILES = {

@@ -13,12 +13,14 @@ export const GAMEPLAY_KEYS: Record<string, Action> = {
   ArrowRight: 'aimRight',
 };
 
-export type Command = 'pause' | 'restart' | 'mute' | 'devOverlay';
+export type Command = 'pause' | 'restart' | 'skip' | 'mute' | 'devOverlay';
 
 export const COMMAND_KEYS: Record<string, Command> = {
   Escape: 'pause',
   KeyP: 'pause',
   KeyR: 'restart',
+  /** Cheat: skip to just past the obstacle you're at. */
+  KeyN: 'skip',
   KeyM: 'mute',
   F3: 'devOverlay',
   Backquote: 'devOverlay',

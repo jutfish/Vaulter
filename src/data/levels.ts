@@ -1,4 +1,5 @@
 import type { LevelData } from '../gameplay/level';
+import { TILE } from './tuning';
 
 /** Simple editable description of a flat test level. Units are tiles (16 px). */
 export interface FlatLevelSpec {
@@ -155,6 +156,9 @@ export class CourseBuilder {
 
 /** Column landmarks of the long course (for tests and probes). */
 export interface LongRunMarks {
+  /** The competition bar: column it stands over (between this column and the next) and its height (px). */
+  barCol: number;
+  barHeight: number;
   /** First column of each pothole on the base ground. */
   potholes: number[];
   hills: number;
@@ -180,7 +184,7 @@ export interface LongRunMarks {
 }
 
 /**
- * The long course (v0.4): warm-up wall, potholes to hop at a sprint, rolling
+ * The long course (v0.4; the stadium since v0.7): the competition bar, potholes to hop at a sprint, rolling
  * hills, a vault up onto a plateau, down its slope and over a wall, then a
  * cliff too tall to vault. A backwards vault takes you up onto the ledge you
  * ran under; run back along it and a second backwards vault takes you onto
@@ -196,8 +200,10 @@ function layLongRun(): { data: LevelData; marks: LongRunMarks } {
   };
   // Left boundary and the run-up.
   b.wall(1, 14).flat(3).start().flat(52);
-  // Warm-up wall (32 px), then room to get back up to speed.
-  b.wall(2, 2).flat(24);
+  // The competition bar (the Olympic final), its landing mat, then room to get back up to speed.
+  const barCol = b.col;
+  const barHeight = 40;
+  b.flat(26);
   // Potholes, widening: hop them at a sprint (too slow or too early a hop and you're in the hole).
   pothole(2);
   b.flat(8);
@@ -243,8 +249,30 @@ function layLongRun(): { data: LevelData; marks: LongRunMarks } {
   b.wall(2, 4).flat(6).finish().flat(b.cols - 1 - b.col);
   b.wall(1, 14);
   return {
-    data: b.build(),
-    marks: { potholes, hills, plateau, plateauWall, cliff, cliffHeight, ledgeFrom, ledgeTo, ledgeHeight, tierFrom, postHeight, bigWall, lastWall },
+    data: {
+      ...b.build(),
+      bar: { x: (barCol + 1) * TILE, y: b.topRow(0) * TILE - barHeight },
+      // Just past each obstacle (potholes: the far edge plus a stride), in course order.
+      checkpoints: [
+        { col: barCol + 7, h: 0, facing: 1, from: barCol + 2, to: potholes[0]! },
+        ...potholes.slice(0, 5).map((c, i) => ({ col: c + 4 + i, h: 0, facing: 1 as const, from: c + 2 + i, to: i < 4 ? potholes[i + 1]! : plateau })),
+        { col: plateau + 3, h: 3, facing: 1, from: plateau, to: plateau + 16 },
+        { col: plateauWall + 4, h: 0, facing: 1, from: plateauWall + 2, to: cliff },
+        { col: ledgeTo - 3, h: ledgeHeight, facing: -1, from: ledgeFrom + 1, to: ledgeTo },
+        { col: tierFrom + 3, h: cliffHeight, facing: 1, from: tierFrom, to: cliff + 10 },
+        { col: bigWall + 4, h: 0, facing: 1, from: bigWall + 2, to: potholes[5]! },
+        ...potholes.slice(5).map((c, i) => ({ col: c + 6 + i, h: 0, facing: 1 as const, from: c + 4 + i, to: i === 0 ? potholes[6]! : lastWall })),
+        { col: lastWall + 4, h: 0, facing: 1, from: lastWall + 2, to: b.cols },
+      ],
+      zones: [
+        { from: 0, theme: 'track' },
+        { from: hills - 3, theme: 'infield' },
+        { from: plateau, theme: 'stand' },
+        { from: cliff, theme: 'roof' },
+        { from: cliff + 10 + cliffHeight, theme: 'outside' },
+      ],
+    },
+    marks: { barCol, barHeight, potholes, hills, plateau, plateauWall, cliff, cliffHeight, ledgeFrom, ledgeTo, ledgeHeight, tierFrom, postHeight, bigWall, lastWall },
   };
 }
 

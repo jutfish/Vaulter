@@ -1,16 +1,17 @@
-import { Container, Graphics, RenderTexture, Renderer, Sprite } from 'pixi.js';
+import { Container, Graphics, RenderTexture, Renderer, Sprite, TilingSprite } from 'pixi.js';
 import { beam as beamCfg, body, pole, poleTiers, run, TILE, VIEW_HEIGHT, VIEW_WIDTH } from '../data/tuning';
 import { NODE_SPACING } from '../gameplay/beam';
 import { handMid } from '../gameplay/carry';
 import { layoutHint, type CarvedHint, type PlacedChar } from '../gameplay/hints';
-import { Tile } from '../gameplay/level';
+import { Tile, type Theme } from '../gameplay/level';
 import { pointAt } from '../gameplay/poleBody';
 import type { GameEvent } from '../gameplay/player';
 import type { World } from '../gameplay/world';
 import { Camera } from './Camera';
 import { ParticlePool } from './effects';
 import { glyphCells } from '../data/pixelFont';
-import { FRAME_H, FRAME_W, HANG_GRIP, type SpriteSet, type VaulterFrame } from './sprites';
+import { FRAME_H, FRAME_W, HANG_GRIP, type SpriteSet, type TileFrame, type VaulterFrame } from './sprites';
+import { cityTexture, moonTexture, skyTexture, standTexture, starsTexture, FLOODLIGHT_HEIGHT, STAND_HEIGHT } from './stadium';
 
 /** Everything the renderer needs from one simulation tick, so it can interpolate between two. */
 interface Snapshot {
@@ -51,13 +52,60 @@ interface Carving {
   total: number;
 }
 
-/** Hint text carved into the land: groove and its lit lower edge, and letters carved per second. */
-const CARVE_DARK = 0x3e281a;
-const CARVE_LIGHT = 0xa47452;
+/** Hint text carved into the land: groove and its lit lower edge (by the look of the land), and letters carved per second. */
+const CARVE: Record<Theme, { dark: number; light: number }> = {
+  track: { dark: 0x3e3c40, light: 0x8a8682 },
+  infield: { dark: 0x3e281a, light: 0xa47452 },
+  stand: { dark: 0x3e3c40, light: 0x8a8682 },
+  roof: { dark: 0x2a2e38, light: 0x8a94a6 },
+  outside: { dark: 0x3e281a, light: 0xa47452 },
+};
 const CARVE_RATE = 30;
-/** Slope colours, matching the grass/dirt tiles in tiles.png. */
-const DIRT = 0x7c5438;
-const GRASS = 0x5ca848;
+/** Slope fill and surface colours by the look of the land, matching the tiles in tiles.png. */
+const SLOPE: Record<Theme, { fill: number; edge: number }> = {
+  track: { fill: 0x646264, edge: 0xc4543c },
+  infield: { fill: 0x7c5438, edge: 0x5ca848 },
+  stand: { fill: 0x646264, edge: 0xa4a09a },
+  roof: { fill: 0x464c5a, edge: 0x808c9c },
+  outside: { fill: 0x7c5438, edge: 0x3e3e44 },
+};
+/** Ground tiles (open above / buried) and walls by the look of the land. */
+const GROUND_FRAMES: Record<Theme, { top: TileFrame; body: TileFrame; wallTop: TileFrame; wall: TileFrame }> = {
+  track: { top: 'track', body: 'concrete', wallTop: 'concreteTop', wall: 'concrete' },
+  infield: { top: 'grass', body: 'dirt', wallTop: 'wallTop', wall: 'wall' },
+  stand: { top: 'concreteTop', body: 'concrete', wallTop: 'adBoardTop', wall: 'adBoard' },
+  roof: { top: 'roofTop', body: 'roof', wallTop: 'roofTop', wall: 'roof' },
+  outside: { top: 'tarmac', body: 'dirt', wallTop: 'wallTop', wall: 'wall' },
+};
+/** Landing mat behind the competition bar (tiles). */
+const MAT_TILES = 4;
+/** Water in the steeplechase pits on the track: depth below the ground line, colour, opacity. */
+const WATER_TOP = 5;
+const WATER = 0x3a78c8;
+const WATER_ALPHA = 0.7;
+/** The competition bar: upright colour, bar stripes, the back upright's offset (side-on oblique), fall. */
+const UPRIGHT = 0xd8d8e0;
+const BAR_COLORS = [0xf4f4f0, 0xd03c3c];
+const BAR_DEPTH = { x: 5, y: -4 };
+const BAR_GRAVITY = 700;
+/** Scoreboard: size, offset of its centre from the bar, height of its bottom edge above the ground. */
+const BOARD = { w: 184, h: 44, dx: 150, lift: 56 };
+const LED = { up: 0xffb030, knocked: 0xff4a3c, cleared: 0xffd840 } as const;
+const BOARD_TEXT = {
+  up: ['OLYMPIC FINAL', 'POLE VAULT'],
+  knocked: ['NO JUMP!', 'PRESS R: TRY AGAIN'],
+  cleared: ['GOLD MEDAL!', 'OLYMPIC CHAMPION'],
+} as const;
+/** Parallax factors of the backdrop layers, and where the moon hangs on screen. */
+const STARS_PARALLAX = 0.03;
+const CITY_PARALLAX = 0.2;
+const STAND_PARALLAX = 0.5;
+const MOON_AT = { x: 372, y: 14 };
+/** Crowd: camera flashes per second (idle / cheering), and how long a cheer lasts. */
+const FLASH_RATE = { idle: 1.5, cheer: 40 };
+const CHEER_TIME = 3;
+const CROWD_TINT = 0x8a8aa4;
+const NIGHT_TINT = 0xb8b8d0;
 /** Pole colour and its darker tip shade, by poleTiers name. */
 const POLE_COLORS: Record<string, { color: number; shade: number }> = {
   gold: { color: 0xf0c838, shade: 0xa07818 },
@@ -116,8 +164,20 @@ function snapshot(world: World): Snapshot {
 export class WorldView {
   readonly root = new Container();
   readonly camera: Camera;
-  private readonly far = new Graphics();
-  private readonly near = new Graphics();
+  private readonly far = new Container();
+  private readonly near = new Container();
+  private readonly worldLayer = new Container();
+  /** Stadium extras (null on plain levels). */
+  private readonly stars: TilingSprite | null = null;
+  private readonly crowd: Sprite | null = null;
+  private readonly flashes = new Graphics();
+  private readonly scoreboard = new Graphics();
+  private readonly barGfx = new Graphics();
+  private readonly water = new Graphics();
+  private boardState: string | null = null;
+  private boardBlink = 0;
+  private cheer = 0;
+  private barFall: { x: number; y: number; vx: number; vy: number; angle: number; spin: number; groundY: number } | null = null;
   private readonly levelSprite: Sprite;
   private readonly poleGfx = new Graphics();
   private readonly armsBack = new Graphics();
@@ -147,21 +207,58 @@ export class WorldView {
     const level = world.level;
     this.camera = new Camera(level.pixelWidth, level.pixelHeight);
 
-    this.drawHills(this.far, 0x9fb8d8, 70, 0.011, 40);
-    this.drawHills(this.near, 0x7fa87a, 40, 0.023, 22);
+    const stadium = !!level.data.zones;
+    const sky = new Container();
+    if (stadium) {
+      const groundY = level.startY;
+      sky.addChild(new Sprite(skyTexture(VIEW_WIDTH, VIEW_HEIGHT)));
+      this.stars = new TilingSprite({ texture: starsTexture(VIEW_WIDTH, VIEW_HEIGHT), width: VIEW_WIDTH, height: VIEW_HEIGHT });
+      sky.addChild(this.stars);
+      const moon = new Sprite(moonTexture());
+      moon.position.set(MOON_AT.x, MOON_AT.y);
+      sky.addChild(moon);
+      const cityW = Math.ceil(level.pixelWidth * CITY_PARALLAX + VIEW_WIDTH);
+      const city = new Sprite(cityTexture(cityW, 110));
+      city.position.set(0, groundY - 110);
+      this.far.addChild(city);
+      // The far stand ends about where the near stand (the cliff) does when it's centred on screen.
+      const roof = level.data.zones!.find((z) => z.theme === 'roof');
+      const roofX = (roof ? roof.from : level.width) * TILE;
+      const endX = Math.round(VIEW_WIDTH / 2 + (roofX - VIEW_WIDTH / 2) * STAND_PARALLAX);
+      const standW = Math.ceil(level.pixelWidth * STAND_PARALLAX + VIEW_WIDTH);
+      this.crowd = new Sprite(standTexture(standW, endX));
+      this.crowd.position.set(0, groundY - FLOODLIGHT_HEIGHT - 4);
+      // Across the infield, in the dark: pushed back so the track reads first.
+      this.crowd.tint = CROWD_TINT;
+
+      this.near.addChild(this.crowd, this.flashes);
+    } else {
+      const far = new Graphics();
+      const near = new Graphics();
+      this.drawHills(far, 0x9fb8d8, 70, 0.011, 40);
+      this.drawHills(near, 0x7fa87a, 40, 0.023, 22);
+      this.far.addChild(far);
+      this.near.addChild(near);
+    }
 
     this.levelSprite = new Sprite(this.bakeLevel(renderer));
+    if (stadium) {
+      // It's night: the land is a little darker and bluer than by day.
+      this.levelSprite.tint = NIGHT_TINT;
+      this.hintLayer.tint = NIGHT_TINT;
+    }
     const flag = new Sprite(sprites.flag);
     flag.position.set(level.finishX, (level.groundBelow(level.finishX + 8, 0, level.pixelHeight) ?? level.startY) - FRAME_H);
 
     this.vaulter = new Sprite(sprites.vaulter.idle);
     this.flash.visible = false;
 
-    const worldLayer = new Container();
+    const worldLayer = this.worldLayer;
     worldLayer.label = 'worldLayer';
     // Carried pole sits beside the body: back arm, pole, body, then the front arm reaching across to grip it.
-    worldLayer.addChild(this.levelSprite, this.hintLayer, this.markers(), flag, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.particles.container, this.flash);
-    this.root.addChild(this.far, this.near, worldLayer);
+    // Water in the pits is in front of the vaulter (wading).
+    worldLayer.addChild(this.scoreboard, this.levelSprite, this.hintLayer, this.markers(), flag, this.barGfx, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.water, this.particles.container, this.flash);
+    this.root.addChild(sky, this.far, this.near, worldLayer);
 
     this.prev = this.curr = snapshot(world);
     this.camera.snapTo(world.player.x, world.player.y);
@@ -222,8 +319,9 @@ export class WorldView {
         const y = ch.y + gy * k;
         // Carved: a dark groove with a lit lower edge. Only into the land, never the sky.
         if (!level.isSolidAt(x + k / 2, y + k / 2)) continue;
-        g.rect(x, y + 1, k, k).fill(CARVE_LIGHT);
-        g.rect(x, y, k, k).fill(CARVE_DARK);
+        const carve = CARVE[level.themeAt(Math.floor(x / TILE))];
+        g.rect(x, y + 1, k, k).fill(carve.light);
+        g.rect(x, y, k, k).fill(carve.dark);
       }
       last = { x: ch.x + k, y: ch.y + 2 * k };
     }
@@ -235,6 +333,8 @@ export class WorldView {
     this.prev = this.curr = snapshot(this.world);
     this.camera.snapTo(this.world.player.x, this.world.player.y);
     this.bodyRotation = 0;
+    this.barFall = null;
+    this.cheer = 0;
   }
 
   private react(e: GameEvent): void {
@@ -270,6 +370,14 @@ export class WorldView {
       case 'hop':
         this.particles.dust(p.x, p.y, 3, 40);
         break;
+      case 'barKnocked': {
+        const ground = this.world.level.groundBelow(e.x, e.y, this.world.level.pixelHeight) ?? e.y;
+        this.barFall = { x: e.x, y: e.y, vx: p.vx * 0.15, vy: Math.min(0, p.vy) * 0.3, angle: 0, spin: (p.vx >= 0 ? 1 : -1) * 4, groundY: ground - 1 };
+        break;
+      }
+      case 'barCleared':
+        this.cheer = CHEER_TIME;
+        break;
       default:
         break;
     }
@@ -290,12 +398,13 @@ export class WorldView {
       view.x += Math.round((Math.random() - 0.5) * 4);
       view.y += Math.round((Math.random() - 0.5) * 4);
     }
-    const layer = this.root.children[2]!;
-    layer.position.set(-view.x, -view.y);
-    // Parallax: hills sit on the horizon at the resting camera height and drift less than the world.
+    this.worldLayer.position.set(-view.x, -view.y);
+    // Parallax: hills (or the city and the far stand) sit on the horizon at the resting camera height and drift less than the world.
     const dy = view.y - this.baseViewY;
-    this.far.position.set(-Math.round(view.x * 0.2), -this.baseViewY - Math.round(dy * 0.2));
-    this.near.position.set(-Math.round(view.x * 0.5), -this.baseViewY - Math.round(dy * 0.5));
+    this.far.position.set(-Math.round(view.x * CITY_PARALLAX), -this.baseViewY - Math.round(dy * CITY_PARALLAX));
+    this.near.position.set(-Math.round(view.x * STAND_PARALLAX), -this.baseViewY - Math.round(dy * STAND_PARALLAX));
+    if (this.stars) this.stars.tilePosition.set(-Math.round(view.x * STARS_PARALLAX), -Math.round(dy * STARS_PARALLAX));
+    this.drawStadium(view.x, frameDt);
 
     this.particles.update(frameDt);
     this.drawVaulter(p.poleMode === 'planted' && a.planted && b.planted, x, y, alpha, frameDt);
@@ -308,6 +417,110 @@ export class WorldView {
     } else {
       this.flash.visible = false;
     }
+  }
+
+  /** The competition bar (standing or falling), the scoreboard, and the crowd's flashes and cheering. */
+  private drawStadium(viewX: number, frameDt: number): void {
+    const bar = this.world.level.data.bar;
+    if (bar) {
+      const level = this.world.level;
+      const ground = level.groundBelow(bar.x, bar.y, level.pixelHeight) ?? bar.y;
+      const g = this.barGfx.clear();
+      // Uprights: the back one offset up and right (side-on oblique), each with a peg the bar rests on.
+      for (const k of [1, 0]) {
+        const ux = bar.x + BAR_DEPTH.x * k;
+        const uy = bar.y + BAR_DEPTH.y * k;
+        g.rect(ux - 1, uy - 8, 2, ground + BAR_DEPTH.y * k - (uy - 8)).fill(k ? 0xa8a8b4 : UPRIGHT);
+        g.rect(ux - 3, ground + BAR_DEPTH.y * k - 1, 6, 1).fill(k ? 0x8a8a96 : 0xa8a8b4);
+        g.rect(ux + 1, uy, 2, 1).fill(0x606070);
+      }
+      let x0: number;
+      let y0: number;
+      let angle = Math.atan2(BAR_DEPTH.y, BAR_DEPTH.x);
+      if (this.barFall) {
+        const f = this.barFall;
+        f.vy += BAR_GRAVITY * frameDt;
+        f.x += f.vx * frameDt;
+        f.y += f.vy * frameDt;
+        f.angle += f.spin * frameDt;
+        if (f.y >= f.groundY) {
+          // Bounce once, then lie flat on the mat.
+          f.y = f.groundY;
+          f.vy = Math.abs(f.vy) > 60 ? -Math.abs(f.vy) * 0.3 : 0;
+          f.vx *= 0.5;
+          f.spin = 0;
+          if (f.vy === 0) f.angle = 0;
+        }
+        x0 = f.x;
+        y0 = f.y;
+        angle += f.angle;
+      } else {
+        x0 = bar.x + 2;
+        y0 = bar.y;
+      }
+      if (this.world.bar === 'knocked' && !this.barFall) {
+        // Knocked while the view wasn't watching (e.g. a dev teleport): lie on the ground.
+        y0 = ground - 1;
+        angle = 0;
+      }
+      // The bar: a short striped rod going back into the scene (or lying where it fell).
+      const len = 9;
+      for (let i = 0; i < len; i++) {
+        const t = i - 2;
+        g.rect(Math.round(x0 + Math.cos(angle) * t), Math.round(y0 + Math.sin(angle) * t) - 1, 1, 2).fill(BAR_COLORS[Math.floor(i / 2) % 2]!);
+      }
+      this.drawScoreboard(bar.x, ground, frameDt);
+    }
+
+    // The crowd: a camera flash here and there, a storm of them (and everyone jumping) after a clean clearance.
+    if (this.crowd) {
+      this.cheer = Math.max(0, this.cheer - frameDt);
+      const cheering = this.cheer > 0;
+      this.crowd.y = Math.round(this.world.level.startY - FLOODLIGHT_HEIGHT - 4) - (cheering && Math.floor(this.cheer / 0.12) % 2 === 0 ? 1 : 0);
+      const fl = this.flashes.clear();
+      const n = (cheering ? FLASH_RATE.cheer : FLASH_RATE.idle) * frameDt;
+      const count = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
+      const top = this.world.level.startY - STAND_HEIGHT + 8;
+      for (let i = 0; i < count; i++) {
+        const fx = Math.round(viewX * STAND_PARALLAX + Math.random() * VIEW_WIDTH);
+        const fy = Math.round(top + Math.random() * (STAND_HEIGHT - 22));
+        fl.rect(fx, fy, 1, 1).fill(0xffffff);
+        fl.rect(fx - 1, fy, 3, 1).fill({ color: 0xffffff, alpha: 0.5 });
+        fl.rect(fx, fy - 1, 1, 3).fill({ color: 0xffffff, alpha: 0.5 });
+      }
+    }
+  }
+
+  /** The scoreboard next to the bar: what's happened in the final, in amber LEDs. */
+  private drawScoreboard(barX: number, ground: number, frameDt: number): void {
+    const state = this.world.bar;
+    if (state !== this.boardState) {
+      this.boardState = state;
+      this.boardBlink = state === 'up' ? 0 : 1.2;
+    }
+    this.boardBlink = Math.max(0, this.boardBlink - frameDt);
+    const g = this.scoreboard.clear();
+    const cx = Math.round(barX + BOARD.dx);
+    const x = cx - BOARD.w / 2;
+    const y = ground - BOARD.lift - BOARD.h;
+    g.rect(x + 20, y + BOARD.h, 3, BOARD.lift).fill(0x3a3c4a);
+    g.rect(x + BOARD.w - 23, y + BOARD.h, 3, BOARD.lift).fill(0x3a3c4a);
+    g.rect(x - 2, y - 2, BOARD.w + 4, BOARD.h + 4).fill(0x2a2c38);
+    g.rect(x, y, BOARD.w, BOARD.h).fill(0x0c0c12);
+    // Blinking after a change.
+    if (this.boardBlink > 0 && Math.floor(this.boardBlink / 0.15) % 2 === 1) return;
+    const k = 2;
+    const lines = BOARD_TEXT[state];
+    const color = LED[state];
+    lines.forEach((line, li) => {
+      const w = line.length * 4 * k - k;
+      let lx = cx - Math.round(w / 2);
+      const ly = y + 8 + li * 16;
+      for (const ch of line) {
+        for (const [gx, gy] of glyphCells(ch)) g.rect(lx + gx * k, ly + gy * k, k - 1, k - 1).fill(color);
+        lx += 4 * k;
+      }
+    });
   }
 
   private drawVaulter(planted: boolean, x: number, y: number, alpha: number, frameDt: number): void {
@@ -474,14 +687,28 @@ export class WorldView {
         if (t === Tile.SlopeUp || t === Tile.SlopeDown) {
           // Earth below the diagonal with a grass edge along it.
           const up = t === Tile.SlopeUp;
+          const look = SLOPE[level.themeAt(tx)];
           const tri = up ? [x, y + TILE, x + TILE, y, x + TILE, y + TILE] : [x, y, x + TILE, y + TILE, x, y + TILE];
-          slopes.poly(tri).fill(DIRT);
+          slopes.poly(tri).fill(look.fill);
           const grass = up ? [x, y + TILE, x + TILE, y, x + TILE, y + 4, x + 4, y + TILE] : [x, y, x + TILE, y + TILE, x + TILE - 4, y + TILE, x, y + 4];
-          slopes.poly(grass).fill(GRASS);
+          slopes.poly(grass).fill(look.edge);
           continue;
         }
         const open = !level.isSolidTile(tx, ty - 1);
-        const frame = t === Tile.Wall ? (open ? 'wallTop' : 'wall') : open ? 'grass' : 'dirt';
+        const theme = level.themeAt(tx);
+        const look = GROUND_FRAMES[theme];
+        let frame: TileFrame = t === Tile.Wall ? (open ? look.wallTop : look.wall) : open ? look.top : look.body;
+        // Stands: anything raised above the track (tiers, the lower stand) is rows of seats under a walkway.
+        if (theme === 'stand' && t === Tile.Earth && !open && (y < level.startY || !level.isSolidTile(tx, ty + 1))) frame = 'seats';
+        if (theme === 'stand' && t === Tile.Earth && open && !level.isSolidTile(tx, ty + 1)) frame = 'seats';
+        const bar = level.data.bar;
+        if (bar && open && t === Tile.Earth && x >= bar.x && x < bar.x + MAT_TILES * TILE) frame = 'mat';
+        // Car park potholes go down through the tarmac to the earth.
+        if (theme === 'outside' && open && this.inPit(tx, ty - 1)) frame = 'dirt';
+        if (theme === 'track' && open && this.inPit(tx, ty - 1)) {
+          this.water.rect(x, y - TILE + WATER_TOP, TILE, TILE - WATER_TOP).fill({ color: WATER, alpha: WATER_ALPHA });
+          this.water.rect(x, y - TILE + WATER_TOP, TILE, 1).fill({ color: 0xa8d0f8, alpha: 0.9 });
+        }
         const sp = new Sprite(this.sprites.tiles[frame]);
         sp.position.set(x, y);
         tmp.addChild(sp);
@@ -493,6 +720,20 @@ export class WorldView {
     renderer.render({ container: tmp, target: rt, clear: true, clearColor: [0, 0, 0, 0] });
     tmp.destroy({ children: true });
     return rt;
+  }
+
+  /** Is the empty tile at (tx, ty) the inside of a pit: ground below it and walls of ground close on both sides? */
+  private inPit(tx: number, ty: number): boolean {
+    const level = this.world.level;
+    if (level.isSolidTile(tx, ty) || !level.isSolidTile(tx, ty + 1)) return false;
+    const side = (dir: number) => {
+      for (let i = 1; i <= 8; i++) {
+        if (level.isSolidTile(tx + i * dir, ty)) return true;
+        if (!level.isSolidTile(tx + i * dir, ty + 1)) return false;
+      }
+      return false;
+    };
+    return side(-1) && side(1);
   }
 
   /** Distance posts every 5 m along the ground, for a sense of speed. */

@@ -20,7 +20,7 @@ type Step =
  * If tuning changes break this, the level needs re-checking (see the probes).
  */
 const script: Step[] = [
-  { vault: 1, atX: 56 * TILE - 120, hold: 0.5, after: 'right' }, // warm-up wall (column 56)
+  { vault: 1, atX: (m.barCol + 1) * TILE - 120, hold: 0.5, after: 'right' }, // the competition bar
   { run: 1, aim: true, untilX: (m.hills - 4) * TILE }, // potholes (hops are automatic below)
   { run: 1, aim: false, untilX: (m.plateau - 26) * TILE }, // hills, pole carried up out of the slopes
   { vault: 1, atX: m.plateau * TILE - 120, hold: 0.5, after: 'right' }, // up onto the plateau
@@ -90,6 +90,44 @@ describe('long course', () => {
   it('can be completed start to finish, including both backwards vaults', () => {
     const { world, log } = playScript();
     expect(world.cleared, log.join(' ')).toBe(true);
+    expect(log.some((e) => e.startsWith('barCleared')), log.join(' ')).toBe(true);
+    expect(log.some((e) => e.startsWith('barKnocked')), log.join(' ')).toBe(false);
+  });
+
+  it('a real run reaches every checkpoint, in order', () => {
+    const { world } = playScript();
+    expect(world.checkpoint).toBe(data.checkpoints!.length - 1);
+  });
+
+  it('the skip cheat puts you just past each obstacle in turn, standing, pole in hand', () => {
+    const world = new World(data);
+    const cps = data.checkpoints!;
+    for (let i = 0; i < cps.length; i++) {
+      expect(world.skipObstacle()).toBe(true);
+      for (let t = 0; t < 0.5; t += SIM_DT) world.step(frameFor(new Set(), new Set()), SIM_DT);
+      const p = world.player;
+      expect(p.grounded, `checkpoint ${i}`).toBe(true);
+      expect(Math.round((BASE - p.y) / TILE), `checkpoint ${i} height`).toBe(cps[i]!.h);
+      expect(p.carry.held, `checkpoint ${i} pole`).toBe(true);
+      expect(world.checkpoint, `checkpoint ${i} tracked`).toBe(i);
+    }
+    expect(world.skipObstacle()).toBe(false);
+  });
+
+  it('running under the bar knocks it down; a restart puts it back', () => {
+    const world = new World(data);
+    let prev = new Set<Action>();
+    const knocked: string[] = [];
+    for (let t = 0; t < 8 && world.player.x < (m.barCol + 4) * TILE; t += SIM_DT) {
+      const now = new Set<Action>(['right', 'aimRight']);
+      world.step(frameFor(now, prev), SIM_DT);
+      prev = now;
+      for (const e of world.events) if (e.type === 'barKnocked' || e.type === 'barCleared') knocked.push(e.type);
+    }
+    expect(knocked).toEqual(['barKnocked']);
+    expect(world.bar).toBe('knocked');
+    world.reset();
+    expect(world.bar).toBe('up');
   });
 
   it('the cliff is too tall to vault from the ground', () => {

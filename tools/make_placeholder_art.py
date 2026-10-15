@@ -5,7 +5,8 @@ Run from the project root:  python tools/make_placeholder_art.py
 
 Outputs
   vaulter.png  - 10 frames of 16x32, laid out horizontally (see FRAMES)
-  tiles.png    - 4 tiles of 16x16: grass top, dirt, wall face, wall top
+  tiles.png    - 16x16 tiles in TILES order: grass top, dirt, wall face, wall top, then
+                 the stadium set (track, concrete, seating, ad boards, roof, tarmac, mat)
   flag.png     - 16x32 finish flag
 Frame order and anchors are mirrored in src/rendering/sprites.ts.
 """
@@ -180,7 +181,7 @@ def make_vaulter() -> None:
 
 
 def make_tiles() -> None:
-    img = Image.new("RGBA", (64, 16), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16 * 14, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     dirt, dirt_dark, dirt_light = (124, 84, 56, 255), (96, 62, 42, 255), (150, 106, 72, 255)
     grass, grass_dark = (92, 168, 72, 255), (60, 124, 52, 255)
@@ -211,7 +212,98 @@ def make_tiles() -> None:
     d.line((48, 4, 63, 4), fill=stone_dark)
     d.line((48, 15, 63, 15), fill=stone_dark)
     d.line((55, 5, 55, 15), fill=stone_dark)
+    stadium_tiles(img)
     img.save(OUT / "tiles.png")
+
+
+# Order of tiles in tiles.png (mirrored in src/rendering/sprites.ts TILE_FRAMES).
+TILES = ["grass", "dirt", "wall", "wallTop", "track", "concreteTop", "concrete", "seats",
+         "adBoard", "adBoardTop", "roofTop", "roof", "tarmac", "mat"]
+
+
+def stadium_tiles(img: Image.Image) -> None:
+    d = ImageDraw.Draw(img)
+
+    def at(name: str) -> int:
+        return TILES.index(name) * 16
+
+    conc, conc_dark, conc_light = (100, 98, 100, 255), (84, 82, 86, 255), (164, 160, 154, 255)
+    # concrete (below the surface): cast panels with a few pits
+    x = at("concrete")
+    rect(d, x, 0, x + 15, 15, conc)
+    d.line((x, 15, x + 15, 15), fill=conc_dark)
+    d.line((x + 15, 0, x + 15, 15), fill=conc_dark)
+    for (a, b) in ((3, 4), (10, 2), (6, 11), (12, 9)):
+        px(d, x + a, b, conc_dark)
+    # concrete top: a walkway with a lit edge
+    x = at("concreteTop")
+    rect(d, x, 0, x + 15, 15, conc)
+    rect(d, x, 0, x + 15, 1, conc_light)
+    d.line((x, 2, x + 15, 2), fill=conc_dark)
+    d.line((x + 15, 3, x + 15, 15), fill=conc_dark)
+    d.line((x, 15, x + 15, 15), fill=conc_dark)
+    # running track: red tartan over concrete, a white lane line
+    x = at("track")
+    rect(d, x, 0, x + 15, 15, conc)
+    rect(d, x, 0, x + 15, 4, (196, 84, 60, 255))
+    rect(d, x, 5, x + 15, 5, (150, 58, 44, 255))
+    d.line((x, 1, x + 15, 1), fill=(244, 244, 236, 255))
+    for (a, b) in ((4, 3), (11, 3), (8, 4)):
+        px(d, x + a, b, (170, 68, 50, 255))
+    d.line((x, 15, x + 15, 15), fill=conc_dark)
+    # seating: a concrete tread with a row of blue seats under the edge
+    x = at("seats")
+    rect(d, x, 0, x + 15, 15, conc_dark)
+    rect(d, x, 0, x + 15, 2, conc_light)
+    seat, seat_dark = (52, 96, 196, 255), (34, 64, 140, 255)
+    for sx in (1, 9):
+        rect(d, x + sx, 4, x + sx + 1, 9, seat)        # back
+        rect(d, x + sx + 1, 9, x + sx + 5, 10, seat)   # seat
+        px(d, x + sx + 4, 11, seat_dark)               # leg
+        px(d, x + sx + 4, 12, seat_dark)
+        px(d, x + sx, 4, seat_dark)
+    d.line((x, 14, x + 15, 14), fill=(84, 80, 78, 255))
+    # advertising boards: white with coloured blocks of "logos"
+    for name, top in (("adBoard", False), ("adBoardTop", True)):
+        x = at(name)
+        rect(d, x, 0, x + 15, 15, (236, 236, 232, 255))
+        d.line((x, 0, x, 15), fill=(190, 190, 186, 255))
+        rect(d, x + 3, 5, x + 8, 9, (40, 120, 200, 255))
+        rect(d, x + 9, 5, x + 12, 9, (230, 190, 40, 255))
+        rect(d, x + 3, 11, x + 12, 11, (210, 60, 60, 255))
+        if top:
+            rect(d, x, 0, x + 15, 2, (60, 60, 70, 255))
+        d.line((x, 15, x + 15, 15), fill=(190, 190, 186, 255))
+    # roof top: corrugated metal sheet
+    roof, roof_dark, roof_light = (128, 140, 156, 255), (88, 98, 114, 255), (176, 188, 202, 255)
+    x = at("roofTop")
+    rect(d, x, 0, x + 15, 15, (70, 76, 90, 255))
+    rect(d, x, 0, x + 15, 4, roof)
+    d.line((x, 0, x + 15, 0), fill=roof_light)
+    for a in range(0, 16, 4):
+        px(d, x + a, 1, roof_dark)
+        px(d, x + a, 2, roof_dark)
+    # roof (the stadium's outer shell): dark panels with lit window slits
+    x = at("roof")
+    rect(d, x, 0, x + 15, 15, (70, 76, 90, 255))
+    d.line((x + 15, 0, x + 15, 15), fill=(52, 56, 68, 255))
+    rect(d, x + 3, 5, x + 4, 10, (240, 214, 120, 255))
+    rect(d, x + 10, 5, x + 11, 10, (240, 214, 120, 255))
+    # tarmac with a yellow line
+    x = at("tarmac")
+    rect(d, x, 0, x + 15, 15, (124, 84, 56, 255))
+    rect(d, x, 0, x + 15, 4, (62, 62, 68, 255))
+    d.line((x, 4, x + 15, 4), fill=(40, 40, 44, 255))
+    rect(d, x + 2, 1, x + 8, 1, (230, 200, 60, 255))
+    for (a, b) in ((11, 2), (13, 3), (5, 3)):
+        px(d, x + a, b, (84, 84, 92, 255))
+    # landing mat: blue foam set into the ground
+    x = at("mat")
+    rect(d, x, 0, x + 15, 15, conc)
+    rect(d, x, 0, x + 15, 7, (40, 90, 190, 255))
+    d.line((x, 0, x + 15, 0), fill=(100, 150, 230, 255))
+    d.line((x + 15, 0, x + 15, 7), fill=(28, 60, 140, 255))
+    d.line((x, 7, x + 15, 7), fill=(28, 60, 140, 255))
 
 
 def make_flag() -> None:

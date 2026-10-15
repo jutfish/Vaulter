@@ -26,7 +26,7 @@ interface Attempt {
 }
 
 /** Runs one vault; returns the landing column and height (tiles), and whether the pole is still held. */
-function vault(a: Attempt): { col: number; h: number; held: boolean } {
+function vault(a: Attempt): { col: number; h: number; held: boolean; bar: string } {
   const w = new World(data);
   const p = w.player;
   p.x = a.col * TILE + 8;
@@ -55,7 +55,7 @@ function vault(a: Attempt): { col: number; h: number; held: boolean } {
     }
     if (launched >= 0 && p.grounded && t - launched > 0.1) break;
   }
-  return { col: Math.floor(p.x / TILE), h: Math.round((BASE - p.y) / TILE), held: p.carry.held };
+  return { col: Math.floor(p.x / TILE), h: Math.round((BASE - p.y) / TILE), held: p.carry.held, bar: w.bar };
 }
 
 function table(title: string, ds: number[], holds: number[], cell: (d: number, hold: number) => string): void {
@@ -71,6 +71,10 @@ test('long course vault windows', () => {
   // Landed at height h at or past column pastCol (on top of a wall counts: you walk off it).
   const ok = (r: { col: number; h: number; held: boolean }, h: number, pastCol: number) => ((r.h === h || (pastCol > 0 && r.col < pastCol + 2)) && r.col >= pastCol ? (r.held ? 'OK' : 'drop') : '.');
 
+  table(`The competition bar (${m.barHeight} px), at full speed (OK = cleared, x = knocked)`, DS, HOLDS, (d, hold) => {
+    const r = vault({ col: m.barCol - 20, h: 0, vx: 360, dir: 1, pressX: (m.barCol + 1) * TILE - d, hold, after: 'right' });
+    return r.bar === 'cleared' ? (r.held ? 'OK' : 'drop') : r.bar === 'knocked' ? 'x' : '.';
+  });
   table(`Backwards onto the ledge (running right at full speed; d = before the cliff face; Left after release)`, [100, 120, 140, 160, 180, 200], HOLDS, (d, hold) =>
     ok(vault({ col: m.ledgeFrom - 10, h: 0, vx: 360, dir: 1, pressX: m.cliff * TILE - d, hold, after: 'left' }), m.ledgeHeight, 0),
   );

@@ -8,6 +8,32 @@ export interface LevelData {
    * below the diagonal), '.' empty, 'S' player start (feet), 'F' finish column.
    */
   rows: string[];
+  /** The competition bar (px): its x and the height of its top. Knock it or run under it and it falls. */
+  bar?: { x: number; y: number };
+  /** Landing spots just past each obstacle, in course order (for the skip cheat). */
+  checkpoints?: Checkpoint[];
+  /** Look of the land from column `from` on (rendering only; no physics). */
+  zones?: Zone[];
+}
+
+/**
+ * Just past an obstacle: stand at column `col`, `h` tiles above the start's
+ * ground, facing `facing`. You've got there once you're on the ground at that
+ * height anywhere in columns [from, to).
+ */
+export interface Checkpoint {
+  col: number;
+  h: number;
+  facing: 1 | -1;
+  from: number;
+  to: number;
+}
+
+export type Theme = 'track' | 'infield' | 'stand' | 'roof' | 'outside';
+
+export interface Zone {
+  from: number;
+  theme: Theme;
 }
 
 export interface Rect {
@@ -46,6 +72,7 @@ export class Level {
   /** World x past which the level counts as cleared (-1 if none). */
   readonly finishX: number;
   private readonly tiles: Uint8Array;
+  private readonly zones: Zone[];
 
   constructor(readonly data: LevelData) {
     this.height = data.rows.length;
@@ -65,6 +92,7 @@ export class Level {
         } else if (c === 'F' && fx < 0) fx = tx * TILE;
       }
     });
+    this.zones = [...(data.zones ?? [])].sort((a, b) => a.from - b.from);
     this.startX = sx;
     this.startY = sy;
     this.finishX = fx;
@@ -76,6 +104,13 @@ export class Level {
 
   get pixelHeight(): number {
     return this.height * TILE;
+  }
+
+  /** The look of the land at column tx (the default grass and stone without zones). */
+  themeAt(tx: number): Theme {
+    let theme: Theme = 'infield';
+    for (const z of this.zones) if (tx >= z.from) theme = z.theme;
+    return theme;
   }
 
   /** Out-of-bounds is solid at the sides and bottom, open above. */

@@ -69,12 +69,40 @@ lesser pole appears in your hands: silver, then bronze, then plain black
 pole you carry is a quiet record of how cleanly you've played.
 
 ## Levels: shapes, not gimmicks (v0.4)
-Levels stay pure platforming. The variety comes from the shape of the ground
+Levels stay pure platforming (the story will add moving things: traffic,
+helicopter, planes, rocket). The variety comes from the shape of the ground
 and how the vaulter and pole meet it: slopes up and down (speed, pole
 digging in), potholes hopped at a sprint, low ceilings (pole level),
 plateaus to vault onto, cliffs to get round. The backwards vault (release
 early, fly up and back) is a real move: levels can need it. See
 `docs/level-design.md`.
+
+## The story: to the moon (2026-10-15)
+JT wants a much stronger theme: a story that escalates wildly. He wins the
+Olympic pole vault final, gets his gold medal on the podium (a short,
+very zoomed-in pixel cutscene, presented by a little man in a suit), says
+"now what???", loses his purpose... and looks up at the moon. The rest of
+the game is him trying to get there with his pole: the stadium (the
+seating is the backwards-vault switchback, the slope is sliding down the
+outside), moving traffic, up the inside of a tall building, scaffolding
+and cranes on top, onto a passing helicopter, between planes, onto a
+rocket, then huge low-gravity jumps over craters on the moon.
+- It should **feel like one continuous world**, but needn't actually be one
+  if chapters are much easier.
+- Each setting is **short** so the climb feels quick and rising.
+- **The moon is in the sky from the very first frame**, so the look-up
+  pays off.
+- **Knocking the bar** in the final: the crowd groan "ahhh" and the
+  scoreboard says try again. This teaches that R is a normal part of play.
+- Cutscenes stay short, skippable and rare (the opening; maybe one later),
+  in keeping with "no animations that take control away".
+- The moon will need low gravity: this breaks "no floaty air time" on
+  purpose, as the payoff.
+- Ending idea (not decided): he plants his pole on the moon as a flag, and
+  it's whichever pole he still has (gold/silver/bronze/black).
+
+v0.7 = the stadium only (a reskin of the long run plus the competition
+bar), without the cutscene.
 
 ## Feedback the player must get
 - The pole visibly bends in proportion to stored energy.
