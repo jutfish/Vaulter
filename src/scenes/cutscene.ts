@@ -103,6 +103,9 @@ export function podiumDue(world: World): boolean {
 export class Cutscene {
   t = 0;
 
+  /** @param skippable False the first time it's ever played: it's the story, watch it once. */
+  constructor(readonly skippable = true) {}
+
   /** The world stays frozen until the fade back into it starts (control returns as it fades in). */
   get holdsWorld(): boolean {
     return this.t < podium.end - podium.fade;
@@ -127,7 +130,7 @@ export class Cutscene {
 
   /** Straight to black, then fade back into the world. Not in the first moments (see `skipAfter`). */
   skip(): boolean {
-    if (this.t < podium.skipAfter) return false;
+    if (!this.skippable || this.t < podium.skipAfter) return false;
     this.t = Math.max(this.t, podium.end - podium.fade);
     return true;
   }

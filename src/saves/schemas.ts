@@ -35,12 +35,14 @@ export interface Progress {
   /** Best vault height in metres (feet above take-off ground). */
   bestHeight: number;
   levels: Record<string, LevelRecord>;
+  /** Has seen the podium cutscene all the way through (it can't be skipped until then). */
+  seenPodium: boolean;
 }
 
 export const progressSchema: Schema<Progress> = {
   key: 'vaulter.progress',
-  version: 1,
-  defaults: () => ({ bestHeight: 0, levels: {} }),
+  version: 2,
+  defaults: () => ({ bestHeight: 0, levels: {}, seenPodium: false }),
   validate(data) {
     if (!isRecord(data)) return null;
     const levels: Record<string, LevelRecord> = {};
@@ -54,7 +56,10 @@ export const progressSchema: Schema<Progress> = {
         };
       }
     }
-    return { bestHeight: num(data.bestHeight, 0, 0), levels };
+    return { bestHeight: num(data.bestHeight, 0, 0), levels, seenPodium: bool(data.seenPodium, false) };
   },
-  migrations: {},
+  migrations: {
+    /** v2 (0.8.2): the podium cutscene is unskippable until seen once; nobody has seen it yet. */
+    1: (d) => ({ ...(isRecord(d) ? d : {}), seenPodium: false }),
+  },
 };

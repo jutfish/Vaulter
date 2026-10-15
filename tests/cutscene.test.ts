@@ -84,6 +84,14 @@ describe('the podium cutscene', () => {
     expect(c.done).toBe(true);
   });
 
+  it('the first time it plays it cannot be skipped at all', () => {
+    const c = new Cutscene(false);
+    c.update(podium.skipAfter + 1);
+    expect(c.skip()).toBe(false);
+    c.update(podium.end);
+    expect(c.done).toBe(true);
+  });
+
   it("keys still pressed from the landing can't skip it before it's been seen", () => {
     const c = new Cutscene();
     c.update(0.05);

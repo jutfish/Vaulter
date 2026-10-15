@@ -41,6 +41,13 @@ describe('versioned saves', () => {
     expect(decode(settingsSchema, '"just a string"').status).toBe('default');
   });
 
+  it('progress v1 migrates to v2: best height and levels kept, podium not yet seen', () => {
+    const raw = JSON.stringify({ version: 1, data: { bestHeight: 3.5, levels: { 'long-run': { cleared: true, bestTime: 61.2 } } } });
+    const r = decode(progressSchema, raw);
+    expect(r.status).toBe('migrated');
+    expect(r.value).toEqual({ bestHeight: 3.5, levels: { 'long-run': { cleared: true, bestTime: 61.2 } }, seenPodium: false });
+  });
+
   it('migrates old versions forward, preserving progress', () => {
     const raw = JSON.stringify({ version: 1, data: { best_px: 80 } });
     const r = decode(v3Schema, raw);

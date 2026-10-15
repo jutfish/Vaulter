@@ -111,7 +111,7 @@ export class GameScene {
 
   private startCutscene(): void {
     this.podiumPlayed = true;
-    this.cutscene = new Cutscene();
+    this.cutscene = new Cutscene(this.d.progress.value.seenPodium);
     this.d.hud.show(false);
   }
 
@@ -121,7 +121,13 @@ export class GameScene {
     // Keys pressed during the cutscene don't carry into the game (held ones still do).
     if (c.holdsWorld) this.d.input.consume();
     else this.d.hud.show(true);
-    if (c.done) this.cutscene = null;
+    if (c.done) {
+      this.cutscene = null;
+      if (!this.d.progress.value.seenPodium) {
+        this.d.progress.value = { ...this.d.progress.value, seenPodium: true };
+        this.save();
+      }
+    }
   }
 
   private playCue(cue: CutsceneCue): void {
