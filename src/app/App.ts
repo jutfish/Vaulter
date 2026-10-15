@@ -7,7 +7,7 @@ import { InputState, type Action } from '../gameplay/input';
 import { PixelStage } from '../rendering/PixelStage';
 import { GameScene } from '../scenes/GameScene';
 import { runLoadingScene, type LoadedAssets } from '../scenes/LoadingScene';
-import { progressSchema, settingsSchema } from '../saves/schemas';
+import { isChapter, progressSchema, settingsSchema, type Chapter } from '../saves/schemas';
 import { probeLocalStorage, SaveSlot } from '../saves/storage';
 import { DevOverlay } from '../ui/DevOverlay';
 import { bindActions, el, showScreen, type ScreenId } from '../ui/dom';
@@ -85,6 +85,7 @@ export class App {
    *   __vaulter.carveHints()                      // carve every stuck hint and the win line now (to look at them)
    *   __vaulter.cutscene()                        // seconds into the podium cutscene (null if none); hold([], s) plays it on
    *   __vaulter.skipCutscene()                    // as any key does
+   *   await __vaulter.level('traffic')             // start a chapter ('long-run' = the stadium, 'traffic')
    */
   private installDevHook(): void {
     const app = this;
@@ -96,6 +97,11 @@ export class App {
       play: async () => {
         await this.play();
         this.devManual = true;
+      },
+      level: async (chapter: Chapter) => {
+        await this.play(chapter);
+        this.devManual = true;
+        return hook.state();
       },
       hold: (actions: Action[], seconds: number) => {
         if (!this.game) return 'no game';
@@ -147,6 +153,8 @@ export class App {
           poleBody: { cx: pb.cx, cy: pb.cy, vx: pb.vx, vy: pb.vy, theta: pb.theta, omega: pb.omega },
           cleared: w.cleared,
           lastVault: w.lastVault,
+          chapter: this.game!.chapter,
+          traffic: w.traffic && { paid: w.traffic.paidAt !== null, offset: w.traffic.offset, speed: w.traffic.speed, swept: w.traffic.swept },
           camera: { x: cam.x, y: cam.y },
         };
       },
@@ -212,14 +220,24 @@ export class App {
     });
   }
 
-  private async play(): Promise<void> {
+  /**
+   * Which chapter Play starts: ?level=traffic (or stadium / long-run) in the address, else the
+   * furthest chapter reached (saved).
+   */
+  private startChapter(): Chapter {
+    const asked = new URLSearchParams(window.location.search).get('level');
+    const named = asked === 'stadium' ? 'long-run' : asked;
+    return isChapter(named) ? named : this.progress.value.chapter;
+  }
+
+  private async play(chapter: Chapter = this.startChapter(), arriving = false): Promise<void> {
     await this.audio.unlock();
     if (!this.assets) {
       this.mode = 'loading';
       this.assets = await runLoadingScene(this.base, this.audio);
     }
     this.game?.destroy();
-    this.game = new GameScene({
+    const deps = {
       renderer: this.pixi.renderer,
       stage: this.stage,
       sprites: this.assets.sprites,
@@ -228,7 +246,10 @@ export class App {
       progress: this.progress,
       hud: this.hud,
       dev: this.dev,
-    });
+      // Straight on into the next part of the journey (the new scene fades in).
+      onChapterDone: (next: Chapter) => void this.play(next, true),
+    };
+    this.game = new GameScene(deps, chapter, arriving);
     this.input.releaseAll();
     this.input.consume();
     this.audio.playMusic('main');

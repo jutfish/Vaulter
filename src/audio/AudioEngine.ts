@@ -6,6 +6,12 @@ export interface PlayOptions {
   rate?: number;
 }
 
+/** A looping sound whose volume and pitch follow the game (e.g. the traffic's engines). */
+export interface LoopHandle {
+  set(volume: number, rate: number): void;
+  stop(): void;
+}
+
 /**
  * Web Audio mixer: master → (music bus, sfx bus). The AudioContext is
  * created up front (decoding works while suspended) and resumed from the
@@ -93,6 +99,37 @@ export class AudioEngine {
     gain.gain.value = opts.volume ?? 1;
     src.connect(gain).connect(this.sfxBus);
     src.start();
+  }
+
+  /** A looping sound effect, silent until set() gives it a volume (starts once audio is unlocked). */
+  startLoop(key: SoundKey): LoopHandle {
+    let src: AudioBufferSourceNode | null = null;
+    let gain: GainNode | null = null;
+    let stopped = false;
+    return {
+      set: (volume, rate) => {
+        if (stopped) return;
+        if (!src) {
+          const buf = this.buffers.get(key);
+          if (!buf || this.ctx.state !== 'running') return;
+          src = this.ctx.createBufferSource();
+          src.buffer = buf;
+          src.loop = true;
+          gain = this.ctx.createGain();
+          gain.gain.value = 0;
+          src.connect(gain).connect(this.sfxBus);
+          src.start();
+        }
+        gain!.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.05);
+        src.playbackRate.setTargetAtTime(rate, this.ctx.currentTime, 0.1);
+      },
+      stop: () => {
+        stopped = true;
+        src?.stop();
+        src?.disconnect();
+        src = null;
+      },
+    };
   }
 
   playMusic(key: MusicKey): void {

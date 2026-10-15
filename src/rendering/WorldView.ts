@@ -11,6 +11,7 @@ import { Camera } from './Camera';
 import { ParticlePool } from './effects';
 import { glyphCells } from '../data/pixelFont';
 import { FRAME_H, FRAME_W, HANG_GRIP, type SpriteSet, type TileFrame, type VaulterFrame } from './sprites';
+import { TrafficView } from './TrafficView';
 import { cityTexture, moonTexture, skyTexture, standTexture, starsTexture, FLOODLIGHT_HEIGHT, STAND_HEIGHT } from './stadium';
 
 /** Everything the renderer needs from one simulation tick, so it can interpolate between two. */
@@ -59,6 +60,7 @@ const CARVE: Record<Theme, { dark: number; light: number }> = {
   stand: { dark: 0x3e3c40, light: 0x8a8682 },
   roof: { dark: 0x2a2e38, light: 0x8a94a6 },
   outside: { dark: 0x3e281a, light: 0xa47452 },
+  road: { dark: 0x2a2a30, light: 0x6a6a72 },
 };
 const CARVE_RATE = 30;
 /** Slope fill and surface colours by the look of the land, matching the tiles in tiles.png. */
@@ -68,6 +70,7 @@ const SLOPE: Record<Theme, { fill: number; edge: number }> = {
   stand: { fill: 0x646264, edge: 0xa4a09a },
   roof: { fill: 0x464c5a, edge: 0x808c9c },
   outside: { fill: 0x7c5438, edge: 0x3e3e44 },
+  road: { fill: 0x7c5438, edge: 0x3e3e44 },
 };
 /** Ground tiles (open above / buried) and walls by the look of the land. */
 const GROUND_FRAMES: Record<Theme, { top: TileFrame; body: TileFrame; wallTop: TileFrame; wall: TileFrame }> = {
@@ -76,6 +79,7 @@ const GROUND_FRAMES: Record<Theme, { top: TileFrame; body: TileFrame; wallTop: T
   stand: { top: 'concreteTop', body: 'concrete', wallTop: 'adBoardTop', wall: 'adBoard' },
   roof: { top: 'roofTop', body: 'roof', wallTop: 'roofTop', wall: 'roof' },
   outside: { top: 'tarmac', body: 'dirt', wallTop: 'wallTop', wall: 'wall' },
+  road: { top: 'tarmac', body: 'dirt', wallTop: 'wallTop', wall: 'wall' },
 };
 /** Landing mat behind the competition bar (tiles). */
 const MAT_TILES = 4;
@@ -174,6 +178,9 @@ export class WorldView {
   private readonly scoreboard = new Graphics();
   private readonly barGfx = new Graphics();
   private readonly water = new Graphics();
+  /** The traffic level's look (null elsewhere). */
+  private readonly trafficView: TrafficView | null = null;
+  private sweptSpin = 0;
   private boardState: string | null = null;
   private boardBlink = 0;
   private cheer = 0;
@@ -207,9 +214,14 @@ export class WorldView {
     const level = world.level;
     this.camera = new Camera(level.pixelWidth, level.pixelHeight);
 
-    const stadium = !!level.data.zones;
+    const stadium = !!level.data.zones && !world.traffic;
     const sky = new Container();
-    if (stadium) {
+    if (world.traffic) {
+      this.trafficView = new TrafficView(world, sprites);
+      sky.addChild(this.trafficView.sky, this.trafficView.far);
+      this.trafficView.vehicles.tint = NIGHT_TINT;
+      this.trafficView.roadside.tint = NIGHT_TINT;
+    } else if (stadium) {
       const groundY = level.startY;
       sky.addChild(new Sprite(skyTexture(VIEW_WIDTH, VIEW_HEIGHT)));
       this.stars = new TilingSprite({ texture: starsTexture(VIEW_WIDTH, VIEW_HEIGHT), width: VIEW_WIDTH, height: VIEW_HEIGHT });
@@ -242,7 +254,7 @@ export class WorldView {
     }
 
     this.levelSprite = new Sprite(this.bakeLevel(renderer));
-    if (stadium) {
+    if (stadium || this.trafficView) {
       // It's night: the land is a little darker and bluer than by day.
       this.levelSprite.tint = NIGHT_TINT;
       this.hintLayer.tint = NIGHT_TINT;
@@ -257,7 +269,13 @@ export class WorldView {
     worldLayer.label = 'worldLayer';
     // Carried pole sits beside the body: back arm, pole, body, then the front arm reaching across to grip it.
     // Water in the pits is in front of the vaulter (wading).
-    worldLayer.addChild(this.scoreboard, this.levelSprite, this.hintLayer, this.markers(), flag, this.barGfx, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.water, this.particles.container, this.flash);
+    const tv = this.trafficView;
+    if (tv) {
+      // Traffic: no tiles are drawn (the vehicles are sprites, the road is drawn as it moves); no distance posts or flag.
+      worldLayer.addChild(tv.roadside, tv.road, tv.vehicles, tv.wheels, this.hintLayer, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, tv.front, this.particles.container, this.flash);
+    } else {
+      worldLayer.addChild(this.scoreboard, this.levelSprite, this.hintLayer, this.markers(), flag, this.barGfx, this.armsBack, this.poleGfx, this.vaulter, this.armsFront, this.water, this.particles.container, this.flash);
+    }
     this.root.addChild(sky, this.far, this.near, worldLayer);
 
     this.prev = this.curr = snapshot(world);
@@ -272,6 +290,7 @@ export class WorldView {
     const p = this.world.player;
     this.camera.update(p.x, p.y, p.vx, dt);
     for (const e of events) this.react(e);
+    this.trafficView?.onStep(dt, events);
     this.stepCarvings(dt);
   }
 
@@ -335,6 +354,7 @@ export class WorldView {
     this.bodyRotation = 0;
     this.barFall = null;
     this.cheer = 0;
+    this.trafficView?.resetView();
   }
 
   private react(e: GameEvent): void {
@@ -404,7 +424,8 @@ export class WorldView {
     this.far.position.set(-Math.round(view.x * CITY_PARALLAX), -this.baseViewY - Math.round(dy * CITY_PARALLAX));
     this.near.position.set(-Math.round(view.x * STAND_PARALLAX), -this.baseViewY - Math.round(dy * STAND_PARALLAX));
     if (this.stars) this.stars.tilePosition.set(-Math.round(view.x * STARS_PARALLAX), -Math.round(dy * STARS_PARALLAX));
-    this.drawStadium(view.x, frameDt);
+    if (this.trafficView) this.trafficView.render(view.x, view.y, this.baseViewY, alpha);
+    else this.drawStadium(view.x, frameDt);
 
     this.particles.update(frameDt);
     this.drawVaulter(p.poleMode === 'planted' && a.planted && b.planted, x, y, alpha, frameDt);
@@ -555,7 +576,16 @@ export class WorldView {
     let bodyRot = lean * facing;
     let showArms = true;
     this.vaulter.anchor.set(0.5, 1);
-    if (p.inVaultFlight && !p.grounded) {
+    if (this.world.traffic?.swept) {
+      // Fallen into the traffic: tumbling along the road as it carries you back.
+      this.sweptSpin -= frameDt * 9;
+      this.vaulter.anchor.set(0.5, 0.6);
+      this.vaulter.position.set(Math.round(x), Math.round(y - FRAME_H * 0.4));
+      this.vaulter.rotation = this.sweptSpin;
+      this.setFrame('fall', facing);
+      bodyRot = 0;
+      showArms = false;
+    } else if (p.inVaultFlight && !p.grounded) {
       // Keep turning over toward feet-first for the landing.
       const target = facing * Math.PI * 2;
       this.bodyRotation = lerp(this.bodyRotation, target, 1 - Math.exp(-5 * frameDt));
@@ -676,6 +706,7 @@ export class WorldView {
   /** Bakes all solid tiles into one texture (one sprite, one draw call). */
   private bakeLevel(renderer: Renderer): RenderTexture {
     const level = this.world.level;
+    if (this.world.traffic) return RenderTexture.create({ width: 1, height: 1 });
     const tmp = new Container();
     const slopes = new Graphics();
     for (let ty = 0; ty < level.height; ty++) {

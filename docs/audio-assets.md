@@ -24,6 +24,9 @@ this repo.
 | ui_click | ui_click.wav | Square tick | Soft menu click |
 | crowd_ahh | crowd_ahh.wav | 36 buzzy voices through "ah" formants, sliding down together | A stadium crowd's disappointed "ahhhh" (~2 s) |
 | crowd_cheer | crowd_cheer.wav | Voices through "eh" formants, rising, applause crackle, two whistles | A stadium crowd erupting for a gold-medal clearance (~2.5 s) |
+| engine | engine.wav | Seamless 2 s loop: 40 Hz pulse + harmonic + low-passed road roar (the game sets its volume and pitch from the traffic's speed) | Bus/lorry engines and tyre roar on a city road, loopable (traffic, v0.9) |
+| ding | ding.wav | Two bell partials | Ticket machine / fare box "ding" as the medal goes in |
+| whoosh | whoosh.wav | Noise swelling and fading | Traffic rushing past you as the road carries you back |
 | music:main | music_loop.wav | 8-bar 120 bpm chiptune loop | Upbeat, light, loopable track (Track & Field energy, not frantic) |
 
 ## ElevenLabs

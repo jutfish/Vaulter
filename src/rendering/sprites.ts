@@ -1,4 +1,5 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
+import { VEHICLES, type VehicleType } from '../data/vehicles';
 
 /** Mirrors tools/make_placeholder_art.py. */
 export const VAULTER_FRAMES = ['idle', 'run1', 'run2', 'run3', 'run4', 'rise', 'fall', 'hang', 'pike', 'land', 'stand', 'wave', 'sad', 'lookUp'] as const;
@@ -37,6 +38,11 @@ export const SPRITE_FILES = {
   medal: 'assets/sprites/medal.png',
 } as const;
 
+/** The traffic's roadside sprites and the bus's fare box (mirrors make_roadside in the art script). */
+export const ROADSIDE_SPRITES = ['busstop', 'lamp', 'bridge', 'warning', 'gantry', 'tree', 'building', 'canopy', 'farebox'] as const;
+export type RoadsideSprite = (typeof ROADSIDE_SPRITES)[number];
+const VEHICLE_TYPES = Object.keys(VEHICLES) as VehicleType[];
+
 /** The podium cutscene's cast (mirrors the art script). Frames are 16x32 with the feet on the bottom row. */
 export const OFFICIAL_FRAMES = ['stand', 'walk1', 'walk2', 'reach'] as const;
 export type OfficialFrameName = (typeof OFFICIAL_FRAMES)[number];
@@ -55,6 +61,8 @@ export interface SpriteSet {
   official: Record<OfficialFrameName, Texture>;
   rivals: Record<(typeof RIVAL_FRAMES)[number], Texture>;
   medal: Record<(typeof MEDAL_FRAMES)[number], Texture>;
+  vehicles: Record<VehicleType, Texture>;
+  roadside: Record<RoadsideSprite, Texture>;
 }
 
 function slice<K extends string>(base: Texture, names: readonly K[], w: number, h: number): Record<K, Texture> {
@@ -67,7 +75,9 @@ function slice<K extends string>(base: Texture, names: readonly K[], w: number, 
 
 /** Loads all sprite sheets (with progress) and cuts them into frames once. */
 export async function loadSprites(base: string, onProgress?: (f: number) => void): Promise<SpriteSet> {
-  const urls = Object.values(SPRITE_FILES).map((p) => base + p);
+  const vehicleFile = (t: VehicleType) => `assets/sprites/vehicle_${t}.png`;
+  const roadsideFile = (n: RoadsideSprite) => `assets/sprites/${n}.png`;
+  const urls = [...Object.values(SPRITE_FILES), ...VEHICLE_TYPES.map(vehicleFile), ...ROADSIDE_SPRITES.map(roadsideFile)].map((p) => base + p);
   const loaded = await Assets.load<Texture>(urls, onProgress);
   const tex = (p: string) => {
     const t = loaded[base + p]!;
@@ -82,5 +92,7 @@ export async function loadSprites(base: string, onProgress?: (f: number) => void
     official: slice(tex(SPRITE_FILES.official), OFFICIAL_FRAMES, FRAME_W, FRAME_H),
     rivals: slice(tex(SPRITE_FILES.rivals), RIVAL_FRAMES, FRAME_W, FRAME_H),
     medal: slice(tex(SPRITE_FILES.medal), MEDAL_FRAMES, MEDAL_W, MEDAL_H),
+    vehicles: Object.fromEntries(VEHICLE_TYPES.map((t) => [t, tex(vehicleFile(t))])) as Record<VehicleType, Texture>,
+    roadside: Object.fromEntries(ROADSIDE_SPRITES.map((n) => [n, tex(roadsideFile(n))])) as Record<RoadsideSprite, Texture>,
   };
 }

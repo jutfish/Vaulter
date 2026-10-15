@@ -45,7 +45,16 @@ describe('versioned saves', () => {
     const raw = JSON.stringify({ version: 1, data: { bestHeight: 3.5, levels: { 'long-run': { cleared: true, bestTime: 61.2 } } } });
     const r = decode(progressSchema, raw);
     expect(r.status).toBe('migrated');
-    expect(r.value).toEqual({ bestHeight: 3.5, levels: { 'long-run': { cleared: true, bestTime: 61.2 } }, seenPodium: false });
+    expect(r.value).toEqual({ bestHeight: 3.5, levels: { 'long-run': { cleared: true, bestTime: 61.2 } }, seenPodium: false, chapter: 'long-run' });
+  });
+
+  it('progress v2 migrates to v3: everything kept, the chapter is the stadium', () => {
+    const data = { bestHeight: 4.1, levels: { 'long-run': { cleared: true, bestTime: 80 } }, seenPodium: true };
+    const r = decode(progressSchema, JSON.stringify({ version: 2, data }));
+    expect(r.status).toBe('migrated');
+    expect(r.value).toEqual({ ...data, chapter: 'long-run' });
+    // A chapter it doesn't know falls back to the stadium.
+    expect(decode(progressSchema, JSON.stringify({ version: 3, data: { ...data, chapter: 'moon' } })).value.chapter).toBe('long-run');
   });
 
   it('migrates old versions forward, preserving progress', () => {

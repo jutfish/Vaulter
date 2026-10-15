@@ -14,23 +14,25 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - Read `docs/design-intent.md` and `docs/vault-physics.md` at the start of any session that touches movement or the vault.
 
 ## Current state (2026-10-15)
-- **Live:** v0.8.2 (the stadium, N skip cheat, podium cutscene) at https://jutfish.github.io/Vaulter/ (pushed to main 2026-10-15). 85 tests, build OK. JT: the stadium "looks great"; JT is sharing the link with friends.
+- **Live:** v0.9.0 (the stadium + the traffic) at https://jutfish.github.io/Vaulter/ (pushed to main 2026-10-15). JT: the stadium "looks great"; JT is sharing the link with friends.
+- **The traffic is awaiting JT's play** (110 tests, build OK, probe run). Get there: `http://127.0.0.1:5180/?level=traffic` (`?level=stadium` for the stadium), or `await __vaulter.level('traffic')`, or finish the stadium (fades straight in). Play starts at the furthest chapter reached (`Progress.chapter`, progress save v3).
 - **Vision (JT):** discover what the pole can do, then execute it; fiddly-to-find but satisfying tricks (the backwards jump is the model); chaos and old-school difficulty are good. **Story: win Olympic gold, "now what???", look up at the moon, vault your way there** (stadium → traffic → building → scaffolding/cranes → helicopter → planes → rocket → moon). It should feel like one continuous world; each setting short. See `docs/design-intent.md`.
-- **Level = the stadium** (night, moon always visible; looks by `LevelData.zones`, see `docs/level-design.md`): the long run (`buildLongRun`, `CourseBuilder`, `longRunMarks`): the competition bar (40 px, `LevelData.bar`, `World.bar`; knock it → crowd "ahhh" + scoreboard "PRESS R: TRY AGAIN"), steeplechase-water potholes, hills (45° slope tiles), plateau, the backwards-vault switchback (ledge then upper tier), long downslope into the 80 px big wall, potholes, last wall. `tests/course.test.ts` plays it start to flag.
-- **Pole:** own rigid body held by the hands; strict contacts (out the way it came in, positional); plant drop collides with walls/ceilings. Gold → silver → bronze → black poles: lose it → 9 s knock-down count (HUD) → next pole in hand; black→black 3 s; R = gold (`World.countPoleLoss`, `poleTiers`). Bronze confirmed by JT.
-- **Words in the land** (`src/data/hints.ts`): intro line, "HOP TO IT." (backwards jump), "DON'T LET THIS OPPORTUNITY SLIP AWAY." (down the long slope), win line (carved on finishing), lost-pole note (3 s without the pole; placed clear of all other text). Stuck-timer hint mechanism exists but is unused.
-- **Podium cutscene (live; JT hadn't seen it play yet):** after landing from a clean bar clearance (not if you knocked or N-skipped the bar), 9 s, unskippable until seen through once (`Progress.seenPodium`, progress save v2), then any key skips after 1.2 s (`podium.skipAfter`); `src/data/cutscene.ts`, `src/scenes/cutscene.ts`, `src/rendering/PodiumView.ts`, `tests/cutscene.test.ts` (85 tests, build OK). Dev: `__vaulter.cutscene()`, `__vaulter.skipCutscene()`.
-- **Not yet played by JT:** strict contacts, pole tiers, the new words. JT hadn't yet beaten the big wall (tip: full speed down the slope, plant on the flat 7–10 tiles out, release ~0.4 s).
-- Browser-pane screenshots sometimes show only the top-left quarter of the page magnified (pane quirk, not a game bug): wait 1 s and retry, or draw `__vaulter.snapshot()` into a 50vw x 50vh img.
+- **Chapter 1, the stadium** (night, moon; looks by `LevelData.zones`): the long run (`buildLongRun`, `longRunMarks`): competition bar, steeplechase potholes, hills, plateau, the backwards-vault switchback, the big wall, last wall. `tests/course.test.ts` plays it. Podium cutscene after a clean bar clearance (unskippable until seen once).
+- **Chapter 2, the traffic** (`buildTraffic`, `trafficMarks`, `src/data/vehicles.ts`, `src/gameplay/traffic.ts`, `src/rendering/TrafficView.ts`; full write-up and timing tables in `docs/level-design.md`): simulated in the traffic's frame, vehicles are static tiles ('V'), the road ('=') and roadside move back at `traffic.speed` (200 px/s), roadside repeating every 1800 px (low bridge, building + canopy, lamps, signs). Fall onto the moving road → tumble back to the bus's platform. Obstacles: (1) walk up onto the open-top bus's platform, the medal goes in the fare box, it pulls off; (2) hop to the second bus, vault onto the lorry (+32); (3) off the lorry onto the low car before the bridge sweeps it; (4) tightrope: drop the pole across the gap under the caravan (no hop/vault there), walk it, pick it up; (5) up the car transporter, vault onto a building's canopy as it passes (~0.7 s window) → chapter done ("next: up the building, coming soon"). `tests/traffic.test.ts` plays it; `tests/probe/traffic.probe.ts`.
+- **New for both chapters:** a resting pole ≤ 15° is a one-way platform for the feet (`poleWalk`, `standOnPole`); no hop without 10 px headroom (`hop.minHeadroom`); a run that used N sets no best time.
+- **Pole:** own rigid body; strict contacts; gold → silver → bronze → black (9 s count, black 3 s); R = gold.
+- **Not yet played by JT:** the traffic, walking on the pole, strict contacts, pole tiers, the podium cutscene. JT hadn't yet beaten the big wall.
+- Browser pane: screenshots sometimes show only part of the page (pane quirk): `resize_window` preset desktop, wait 1 s, retry; `__vaulter.snapshot(160, 90, 5)` in a full-viewport img works (bigger crops came out clipped).
 
 ## Open items
-- JT's play → the stadium look; the bar (knocking it doesn't block you: should it?); strict contacts, pole tiers, big wall difficulty.
-- Next story step: moving platforms (traffic). JT's feedback on the podium cutscene.
-- JT will reword hints; the lost-pole note still says "press R to restart" (misleading now that a new pole appears).
-- Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
-- Carved hints aren't saved between sessions; `firstWall` level is used by tests/probes only (no level select).
-- v3 carry tuning still open: `carry` in `src/data/tuning.ts` (weight = `armTorque`, swing = `rotOmega`/`rotVelocityGain`, hand-walk = `handMoveTime`, losing it = `gripBreakStretch`/`slipStretch`, pick-up = `grabReach`, flip = `leadFlipAngle`).
-- Next ideas: gamepad (stick = lead direction), javelin throw, pole-world puzzles, drag/strain sounds, more of the one continuous level.
+- JT's play of the traffic: does the frame feel right (static vehicles, moving ground)? Speed (200 px/s), the canopy window, the bridge knocking the neutral-carried pole on the buses (it's 85 px up), the bus→bus gap (you can just drop onto bus 2's back step), being carried all the way back after a fall. Placeholder art (vehicles, roadside) and sounds (engine, ding, whoosh) all want JT's eye.
+- Next chapter: up the inside of the tall building. JT's feedback on the podium cutscene.
+- JT will reword hints; the lost-pole note still says "press R to restart". No words are carved in the traffic (no ground; the lost-pole note is off there).
+- Backwards launches show quality 0%: decide whether a good backwards vault should score.
+- A held pole wedged across a 1-tile gap can hold you up in the air (pole push); seen in testing between bus 2 and the lorry. Physical, odd; watch for it.
+- Carved hints aren't saved between sessions; `firstWall` level is used by tests/probes only.
+- v3 carry tuning still open (`carry` in `src/data/tuning.ts`).
+- Next ideas: gamepad, javelin throw, pole-world puzzles, drag/strain sounds.
 - Connect ElevenLabs (official `elevenlabs-mcp` via `uvx`; key in agent config, never in repo), then propose prompts for approval.
 - Local branch `backup-before-email-rewrite` can be deleted. Commits must use the GitHub noreply email (repo-local `user.email` is set).
 

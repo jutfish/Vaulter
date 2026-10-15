@@ -1,4 +1,6 @@
 import { TILE } from '../data/tuning';
+import type { SolidQuery } from './poleBody';
+import type { TrafficData } from './traffic';
 
 export interface LevelData {
   name: string;
@@ -14,6 +16,8 @@ export interface LevelData {
   checkpoints?: Checkpoint[];
   /** Look of the land from column `from` on (rendering only; no physics). */
   zones?: Zone[];
+  /** A traffic level: the vehicles, the bus you board, and what's fixed to the moving road. */
+  traffic?: TrafficData;
 }
 
 /**
@@ -27,9 +31,11 @@ export interface Checkpoint {
   facing: 1 | -1;
   from: number;
   to: number;
+  /** Traffic: the last obstacle, done by landing on a canopy (the skip puts you on the next one). */
+  goal?: boolean;
 }
 
-export type Theme = 'track' | 'infield' | 'stand' | 'roof' | 'outside';
+export type Theme = 'track' | 'infield' | 'stand' | 'roof' | 'outside' | 'road';
 
 export interface Zone {
   from: number;
@@ -51,9 +57,18 @@ export enum Tile {
   SlopeUp = 3,
   /** '\': rises to the left, solid below the line from top-left to bottom-right. */
   SlopeDown = 4,
+  /** '=': the road. Ground like any other until the traffic moves; then it carries things away. */
+  Road = 5,
+  /** 'V': part of a vehicle (solid like earth; drawn by the vehicle's sprite). */
+  Vehicle = 6,
 }
 
-const TILE_CHARS: Record<string, Tile> = { '#': Tile.Earth, B: Tile.Wall, '/': Tile.SlopeUp, '\\': Tile.SlopeDown };
+const TILE_CHARS: Record<string, Tile> = { '#': Tile.Earth, B: Tile.Wall, '/': Tile.SlopeUp, '\\': Tile.SlopeDown, '=': Tile.Road, V: Tile.Vehicle };
+
+/** A solid thing fixed to the moving road (a low bridge, a canopy), where it is this tick (world px). */
+export interface Mover extends Rect {
+  kind: 'bridge' | 'canopy';
+}
 
 export function isSlope(t: Tile): boolean {
   return t === Tile.SlopeUp || t === Tile.SlopeDown;
@@ -73,6 +88,12 @@ export class Level {
   readonly finishX: number;
   private readonly tiles: Uint8Array;
   private readonly zones: Zone[];
+  /** Traffic levels: solid things on the moving road, where they are this tick (set by World). */
+  movers: Mover[] = [];
+  /** Traffic levels: how fast (px/s) the road is moving backwards this tick; 0 = standing still. */
+  roadSpeed = 0;
+  /** What the pole collides with: the tiles plus the movers. */
+  readonly poleSolid: SolidQuery;
 
   constructor(readonly data: LevelData) {
     this.height = data.rows.length;
@@ -96,6 +117,49 @@ export class Level {
     this.startX = sx;
     this.startY = sy;
     this.finishX = fx;
+    this.poleSolid = {
+      isSolidAt: (x, y) => this.isSolidAt(x, y) || this.moverAt(x, y) !== null,
+      isSolidTile: (tx, ty) => this.isSolidTile(tx, ty),
+      slopePush: (x, y) => this.moverPush(x, y) ?? this.slopePush(x, y),
+    };
+  }
+
+  /** The mover containing the point, if any. */
+  moverAt(x: number, y: number): Mover | null {
+    for (const m of this.movers) if (x > m.x && x < m.x + m.w && y > m.y && y < m.y + m.h) return m;
+    return null;
+  }
+
+  /** Does the box overlap a mover? */
+  overlapsMover(r: Rect): Mover | null {
+    for (const m of this.movers) if (r.x < m.x + m.w && r.x + r.w > m.x && r.y < m.y + m.h && r.y + r.h > m.y) return m;
+    return null;
+  }
+
+  /**
+   * For a point inside a mover: the way out through its nearest face. Never
+   * its back face: movers only move backwards (left), so things are pushed
+   * off its front, top or underside.
+   */
+  moverPush(x: number, y: number): { nx: number; ny: number; depth: number } | null {
+    const m = this.moverAt(x, y);
+    if (!m) return null;
+    const faces = [
+      { nx: -1, ny: 0, depth: x - m.x },
+      { nx: 0, ny: -1, depth: y - m.y },
+      { nx: 0, ny: 1, depth: m.y + m.h - y },
+    ];
+    return faces.reduce((a, b) => (b.depth < a.depth ? b : a));
+  }
+
+  /** Is the tile at (tx, ty) road? */
+  isRoad(tx: number, ty: number): boolean {
+    return this.tileAt(tx, ty) === Tile.Road;
+  }
+
+  /** Speed (px/s, backwards) of the surface under a point just above it: the road's while it moves, else 0. */
+  surfaceDrag(x: number, y: number): number {
+    return this.roadSpeed > 0 && this.isRoad(Math.floor(x / TILE), Math.floor((y + 0.5) / TILE)) ? this.roadSpeed : 0;
   }
 
   get pixelWidth(): number {

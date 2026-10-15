@@ -1,4 +1,4 @@
-import { body, carry as carryCfg, gravity, hop, pole, run } from '../data/tuning';
+import { body, carry as carryCfg, gravity, hop, pole, poleWalk, run } from '../data/tuning';
 import { createCarry, dropPole, grabPole, leadAngle, onLeftPole, onPlanted, reachOf, setIntent, setPlantSwing, stepCarry, type CarryState, type DropReason } from './carry';
 import type { ActionFrame } from './input';
 import { Level, moveBox, type Rect } from './level';
@@ -28,7 +28,15 @@ export type GameEvent =
   | { type: 'bonk' }
   /** The competition bar: over it clean, or knocked off (or run under). */
   | { type: 'barCleared' }
-  | { type: 'barKnocked'; x: number; y: number };
+  | { type: 'barKnocked'; x: number; y: number }
+  /** Traffic: the medal went in the bus's fare box (the bus pulls off shortly). */
+  | { type: 'fare' }
+  /** Traffic: fell onto the moving road, which is carrying you back... */
+  | { type: 'swept' }
+  /** ...and put you back on the bus. */
+  | { type: 'delivered' }
+  /** Traffic: a low bridge (or a canopy) hit you. */
+  | { type: 'shoved'; kind: 'bridge' | 'canopy' };
 
 export type PoleMode = 'carry' | 'swing' | 'planted';
 
@@ -58,6 +66,8 @@ export interface Player {
   lastQuality: number;
   /** The pole (its own body), the hands on it, lean, bob and the flexible pole (v3). */
   carry: CarryState;
+  /** Standing on the pole lying at rest (v0.9). */
+  onPole: boolean;
 }
 
 export function createPlayer(x: number, y: number): Player {
@@ -83,6 +93,7 @@ export function createPlayer(x: number, y: number): Player {
     vaultStartX: x,
     lastQuality: 0,
     carry,
+    onPole: false,
   };
 }
 
@@ -173,7 +184,7 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   // --- Hop (coyote time + input buffering + variable height) ---
   p.coyote = p.grounded ? hop.coyoteTime : Math.max(0, p.coyote - dt);
   p.hopBuffer = input.pressed.hop ? hop.bufferTime : Math.max(0, p.hopBuffer - dt);
-  if (p.hopBuffer > 0 && p.coyote > 0 && p.poleMode === 'carry') {
+  if (p.hopBuffer > 0 && p.coyote > 0 && p.poleMode === 'carry' && hasHeadroom(p, level)) {
     p.vy = -hop.speed;
     p.grounded = false;
     p.coyote = 0;
@@ -219,6 +230,7 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   const fallSpeed = p.vy;
   const yBefore = p.y;
   const res = moveBox(level, box, p.vx * dt, p.vy * dt, { grounded: wasGrounded, stepUp: body.stepUp });
+  const xBefore = p.x;
   p.x = box.x + box.w / 2;
   p.y = box.y + box.h;
   if (res.hitX) {
@@ -228,6 +240,7 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
   if (res.hitY) p.vy = 0;
   p.grounded = res.grounded && p.vy >= 0;
   p.slope = p.grounded ? res.slope : 0;
+  standOnPole(p, level, xBefore, yBefore, wasGrounded);
 
   if (p.inVaultFlight) p.vaultApexY = Math.min(p.vaultApexY, p.y);
   if (p.grounded && !wasGrounded) {
@@ -260,7 +273,7 @@ export function stepPlayer(p: Player, level: Level, input: ActionFrame, dt: numb
       stridePhase: p.strideDistance / run.strideLength,
       allowHandMoves: p.poleMode === 'carry',
       swingRate: p.poleMode === 'swing' ? pole.plantSwingSpeed : 0,
-      level,
+      level: level.poleSolid,
     },
     dt,
   );
@@ -331,6 +344,18 @@ function checkPlantContact(p: Player, level: Level, leadBefore: number, events: 
       tipY = level.surfaceAt(tipX, Math.max(tipY, hit.y) + 0.01);
     }
     if (tipY > grip.y && firstSolidAlongPole(p, level, exact, L - 1) === null) {
+      const drag = level.surfaceDrag(tipX, tipY - 0.01);
+      if (drag > 0) {
+        // Planted on the moving road: it tears the pole away.
+        p.poleMode = 'carry';
+        dropPole(p.carry);
+        p.carry.pole.vx = -drag;
+        p.carry.pole.vy = 0;
+        p.carry.pole.omega *= 0.3;
+        events.push({ type: 'plant', x: tipX, y: tipY });
+        events.push({ type: 'drop', reason: 'dragged' });
+        return;
+      }
       p.aim = exact;
       p.vault = startVault(tipX, tipY, grip.x, grip.y, p.vx, p.vy, L);
       onPlanted(p.carry);
@@ -397,7 +422,8 @@ function stepPlanted(p: Player, level: Level, input: ActionFrame, dt: number, ev
   p.vy = vel.vy;
   p.aim = Math.atan2(v.pivotY - g.y, v.pivotX - g.x);
 
-  if (level.overlapsSolid(vaultBox(g.x, g.y))) {
+  const vb = vaultBox(g.x, g.y);
+  if (level.overlapsSolid(vb) || level.overlapsMover(vb)) {
     // Body hit something mid-swing: drop off the pole.
     p.x = prevX;
     p.y = prevY;
@@ -439,4 +465,64 @@ function leavePole(p: Player, vx: number, vy: number): void {
   // The pole is back in the hands where it was, pointing at the plant; the arms swing it from there.
   const g = gripOf(p);
   onLeftPole(p.carry, g.x, g.y, p.aim, vx, vy);
+}
+
+/** Is there room above the head to hop? Under a low ceiling there isn't. */
+function hasHeadroom(p: Player, level: Level): boolean {
+  const box = playerBox(p);
+  return !level.overlapsSolid({ x: box.x, y: box.y - hop.minHeadroom, w: box.w, h: hop.minHeadroom }, false);
+}
+
+/**
+ * Top of the pole under the feet (px), if it's lying at rest, not too steep,
+ * and some of the feet are over it; null otherwise. The highest point of it
+ * under the feet counts.
+ */
+export function poleTopUnder(p: Player, x: number): number | null {
+  const c = p.carry;
+  if (c.held || c.swept) return null;
+  const b = c.pole;
+  if (Math.hypot(b.vx, b.vy) > poleWalk.restSpeed || Math.abs(b.omega) > poleWalk.restSpin) return null;
+  const ax = Math.cos(b.theta);
+  const ay = Math.sin(b.theta);
+  if (Math.abs(ay) > Math.sin(poleWalk.maxSlope)) return null;
+  const half = pole.totalLength / 2;
+  const lo = b.cx - Math.abs(ax) * half;
+  const hi = b.cx + Math.abs(ax) * half;
+  let top: number | null = null;
+  for (const fx of [x - poleWalk.footSpan, x, x + poleWalk.footSpan]) {
+    if (fx < lo || fx > hi) continue;
+    const y = b.cy + ((fx - b.cx) * ay) / ax - poleWalk.halfThickness;
+    if (top === null || y < top) top = y;
+  }
+  return top;
+}
+
+/**
+ * The pole lying at rest is a narrow one-way platform for the feet (v0.9):
+ * land on it from above, or walk onto it (a lip of up to body.stepUp) from
+ * the ground or along it. It never stops you from below or the side.
+ */
+function standOnPole(p: Player, level: Level, xBefore: number, yBefore: number, wasGrounded: boolean): void {
+  const top = poleTopUnder(p, p.x);
+  if (top === null || p.vy < 0 || p.y < top - 1e-6) {
+    p.onPole = false;
+    return;
+  }
+  const before = poleTopUnder(p, xBefore) ?? top;
+  const reach = wasGrounded ? body.stepUp : 0.5;
+  if (yBefore > before + reach) {
+    p.onPole = false;
+    return;
+  }
+  const box = playerBox(p);
+  if (level.overlapsSolid({ ...box, y: top - box.h }, false)) {
+    p.onPole = false;
+    return;
+  }
+  p.y = top;
+  p.vy = 0;
+  p.grounded = true;
+  p.slope = 0;
+  p.onPole = true;
 }

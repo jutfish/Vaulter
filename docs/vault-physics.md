@@ -101,6 +101,38 @@ angle, spin; gravity acts on it). The vaulter only acts on it through the hands:
 Inspect with `npm run probe` (carry timelines incl. slide and arc; busy-run
 stability; slide-then-arc player trace; long-course vault windows).
 
+### Walking on the pole (v0.9)
+- A pole lying **at rest** (not held, under `poleWalk.restSpeed` / `restSpin`)
+  and **no steeper than** `poleWalk.maxSlope` (15 deg) is a narrow one-way
+  platform for the feet (`standOnPole` in player.ts): land on it from above,
+  or walk onto it from its end or along it (a lip up to `body.stepUp`). Feet
+  within `footSpan` (3 px) of the body's centre count as over it; you stand
+  `halfThickness` (1 px) above its centre line. It never stops you from below
+  or the side, and your weight doesn't move it.
+- So a pole laid across a gap is a tightrope (the traffic's caravan gap), and
+  it works in the stadium too ("skills you already have"): across a pothole.
+- Why 15 deg: a pole leant on a wall is never a ramp. 80 px x sin 15 = 21 px,
+  plus a hop (~16 px) is short of the stadium's lowest wall (48 px).
+  `tests/course.test.ts` still plays the stadium; `tests/traffic.test.ts`
+  checks the tightrope, a pit, and that steep or held poles aren't platforms.
+
+### Hops need headroom (v0.9)
+No hop unless there's `hop.minHeadroom` (10 px) clear above the head. Under a
+low ceiling (the caravan: 32 px over the dolly, 6 px above your head) a hop
+would rise a few px and bonk, and with coyote time that was enough to skim a
+3-tile gap at a sprint. Now you simply can't hop there. Nothing in the stadium
+has that little headroom. Note: a full hop rises ~16 px (discrete steps), so a
+1-tile (16 px) step can't be hopped onto; it needs a slope or a vault.
+
+### The traffic's frame (v0.9)
+Vehicles are static tiles; only the road and roadside move (`traffic.ts`),
+so `vault.ts` is untouched and energy conservation holds as before. Moving
+solids (bridge decks, canopies) join the pole's collision query
+(`Level.poleSolid`): a point inside one is pushed out through its nearest
+face except the back (they only move backwards). The vaulter is shoved out of
+their front (with `vx <= -traffic.speed`) or underside; touching one mid-vault
+is a bonk. The pull-off is cartoon: no pseudo-force while the bus accelerates.
+
 ### Slopes (v0.4)
 - 45° slope tiles. The body's feet walk the diagonal; `body.stepUp` (10 px)
   steps onto lips where a slope meets the next tile (at a sprint the feet are

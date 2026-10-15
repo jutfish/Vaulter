@@ -116,6 +116,19 @@ key except Esc/P/R/M skips it (straight to the fade back). Script and
 timings: `src/data/cutscene.ts`; sequencing (pure, tested):
 `src/scenes/cutscene.ts`; drawing: `src/rendering/PodiumView.ts`.
 
+## The traffic (v0.9, built 2026-10-15, not yet played by JT)
+JT's brief: the vehicles feel like static platforms and the feeling of
+movement comes from the ground moving; all vehicles go the same speed. Fall
+off and everything zooms by and you're back at the start, at the first
+vehicle you can board: an open-top bus, boarded by paying with the medal (a
+tiny beat, no cutscene, no control taken). A new skill: put the pole down as a
+tightrope-style bridge, which reveals you could walk on the pole all along
+(it works in the stadium too). Five obstacles: board the bus; vault up onto a
+lorry; get off it onto a low car before a low bridge sweeps it; the tightrope
+under a caravan; up the car transporter and onto a building's canopy as it
+passes (into the building: the next chapter). Details and timings:
+`docs/level-design.md`.
+
 ## Feedback the player must get
 - The pole visibly bends in proportion to stored energy.
 - A clear audio/visual cue at plant and at release, strongest at a perfect release.

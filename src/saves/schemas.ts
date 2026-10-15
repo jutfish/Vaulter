@@ -37,12 +37,22 @@ export interface Progress {
   levels: Record<string, LevelRecord>;
   /** Has seen the podium cutscene all the way through (it can't be skipped until then). */
   seenPodium: boolean;
+  /** The part of the story you're up to: Play starts here (v3). */
+  chapter: Chapter;
+}
+
+/** The parts of the journey, in order (level ids). */
+export const CHAPTERS = ['long-run', 'traffic'] as const;
+export type Chapter = (typeof CHAPTERS)[number];
+
+export function isChapter(v: unknown): v is Chapter {
+  return typeof v === 'string' && (CHAPTERS as readonly string[]).includes(v);
 }
 
 export const progressSchema: Schema<Progress> = {
   key: 'vaulter.progress',
-  version: 2,
-  defaults: () => ({ bestHeight: 0, levels: {}, seenPodium: false }),
+  version: 3,
+  defaults: () => ({ bestHeight: 0, levels: {}, seenPodium: false, chapter: 'long-run' }),
   validate(data) {
     if (!isRecord(data)) return null;
     const levels: Record<string, LevelRecord> = {};
@@ -56,10 +66,13 @@ export const progressSchema: Schema<Progress> = {
         };
       }
     }
-    return { bestHeight: num(data.bestHeight, 0, 0), levels, seenPodium: bool(data.seenPodium, false) };
+    const chapter = isChapter(data.chapter) ? data.chapter : 'long-run';
+    return { bestHeight: num(data.bestHeight, 0, 0), levels, seenPodium: bool(data.seenPodium, false), chapter };
   },
   migrations: {
     /** v2 (0.8.2): the podium cutscene is unskippable until seen once; nobody has seen it yet. */
     1: (d) => ({ ...(isRecord(d) ? d : {}), seenPodium: false }),
+    /** v3 (0.9.0): which chapter you're on. Everyone so far is at the stadium. */
+    2: (d) => ({ ...(isRecord(d) ? d : {}), chapter: 'long-run' }),
   },
 };

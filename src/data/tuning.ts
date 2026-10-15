@@ -58,6 +58,42 @@ export const hop = {
   cutMultiplier: 0.45,
   coyoteTime: 0.08,
   bufferTime: 0.1,
+  /** No hop without this much room (px) above the head: under a low ceiling you can't jump (v0.9). */
+  minHeadroom: 10,
+};
+
+/**
+ * Walking on the pole (v0.9): a pole lying still (dropped, not held) is a
+ * narrow one-way platform for the feet. Land on it or walk onto it from its
+ * end; lay it across a gap and it's a tightrope.
+ */
+export const poleWalk = {
+  /** Steepest a resting pole can lie and still be walked on (rad). Kept low so a pole leant on a
+   *  wall is never a ramp: 80 px x sin(15 deg) = 21 px, plus a hop (18 px), is short of a 48 px wall. */
+  maxSlope: (15 * Math.PI) / 180,
+  /** The pole is at rest (walkable) below these speeds (px/s, rad/s). */
+  restSpeed: 12,
+  restSpin: 0.4,
+  /** The feet stand this far (px) above the pole's centre line (half its thickness). */
+  halfThickness: 1,
+  /** Feet within this far (px) either side of the body's centre count as over the pole. */
+  footSpan: 3,
+};
+
+/**
+ * The traffic (v0.9). Simulated in the traffic's own frame: vehicles stand
+ * still and the road, and everything fixed to it, moves backwards.
+ */
+export const traffic = {
+  /** Speed of the traffic (px/s): the road moves backwards this fast. 200 = 12.5 m/s, 28 mph. */
+  speed: 200,
+  /** Seconds from the fare going in to the bus pulling off. */
+  departDelay: 1.2,
+  /** Seconds the bus takes to get up to speed (constant acceleration). */
+  pullOffTime: 2.5,
+  /** Fallen onto the road: it carries you back, speeding up (px/s^2) to sweepMax (px/s), to the bus. */
+  sweepAccel: 700,
+  sweepMax: 900,
 };
 
 export const pole = {

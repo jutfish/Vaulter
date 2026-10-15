@@ -13,6 +13,10 @@ Outputs
   official.png - 4 frames of 16x32: the little man in a suit and tie (stand, walk1, walk2, reach)
   rivals.png   - 2 frames of 16x32: the silver and bronze vaulters (palette swaps of "stand")
   medal.png    - 3 frames of 5x8: gold, silver, bronze medal on a ribbon (anchor 2, 1)
+  vehicle_*.png - the traffic's vehicles (bus, lorry, car, houseRig, transporter), sized to their
+                 solid shapes in src/data/vehicles.ts (wheels are drawn in game)
+  busstop.png, lamp.png, bridge.png, warning.png, gantry.png, tree.png, building.png,
+  canopy.png, farebox.png - things fixed to the road, and the bus's fare box
 Frame order and anchors are mirrored in src/rendering/sprites.ts.
 """
 
@@ -479,6 +483,280 @@ def make_medal() -> None:
         px(d, ox + 2, oy + 5, dark)
     outline(sheet, mw).save(OUT / "medal.png")
 
+
+# --- The traffic (v0.9) ------------------------------------------------------
+# Vehicle sprites match the solid shapes in src/data/vehicles.ts: width = columns x 16,
+# height = rows x 16 + the drawn-only space above (tests/traffic.test.ts checks the sizes).
+# Wheels are left out: the game draws them spinning. Text is drawn in game (pixel font).
+
+VEHICLES = {  # type: (columns, rows, above)
+    "bus": (18, 2, 12),
+    "lorry": (7, 4, 0),
+    "car": (6, 1, 0),
+    "houseRig": (30, 5, 6),
+    "transporter": (23, 5, 0),
+}
+
+DARK = (28, 26, 34, 255)
+GLASS = (54, 70, 104, 255)
+LIT = (255, 214, 120, 255)
+LIT_DIM = (204, 160, 84, 255)
+STEEL, STEEL_DARK, STEEL_LIGHT = (120, 126, 138, 255), (78, 82, 94, 255), (170, 176, 188, 255)
+HEADLIGHT = (255, 250, 210, 255)
+TAIL = (220, 40, 30, 255)
+
+
+def window(d, x0, y0, x1, y1, lit=True):
+    rect(d, x0, y0, x1, y1, LIT if lit else GLASS)
+    rect(d, x0, y1, x1, y1, LIT_DIM if lit else DARK)
+
+
+def arch(d, cx, base, r):
+    """Dark wheel arch (the wheel itself is drawn by the game)."""
+    for y in range(base - r - 2, base):
+        for x in range(cx - r - 2, cx + r + 3):
+            if (x - cx) ** 2 + (y - base) ** 2 <= (r + 2) ** 2:
+                px(d, x, y, DARK)
+
+
+def make_bus(d, w, h, top):
+    red, red_dark, red_light = (200, 40, 44, 255), (140, 24, 30, 255), (236, 88, 80, 255)
+    cream = (236, 222, 180, 255)
+    deck = top            # top deck floor (h2)
+    plat = top + 16       # rear platform floor (h1)
+    # Lower deck body under the top deck, the platform, and the rear step (a ramp up to it).
+    rect(d, 64, deck, w - 1, h - 1, red)
+    rect(d, 16, plat, 63, h - 1, red)
+    for i in range(16):
+        rect(d, 15 - i, h - 1 - i, 15, h - 1 - i, red_dark)
+    rect(d, 16, plat, 47, plat + 1, STEEL_LIGHT)
+    # Stairs (column 3) up to the top deck.
+    for i in range(16):
+        rect(d, 48 + i, plat - i - 1, 63, plat - i - 1, STEEL)
+    for i in range(0, 16, 3):
+        d.line((48 + i, plat - i - 1, 50 + i, plat - i - 1), fill=STEEL_LIGHT)
+    rect(d, 30, plat - 12, 30, plat, STEEL_LIGHT)   # grab pole on the platform
+    # Cream bands and lit lower-deck windows.
+    rect(d, 64, deck, w - 1, deck + 2, cream)
+    rect(d, 16, h - 6, w - 1, h - 5, cream)
+    for x in range(70, w - 26, 18):
+        window(d, x, deck + 5, x + 13, deck + 15)
+    # Driver's cab, headlight, tail light.
+    window(d, w - 18, deck + 5, w - 4, deck + 17, lit=False)
+    rect(d, w - 3, h - 9, w - 1, h - 7, HEADLIGHT)
+    rect(d, 17, plat + 3, 18, plat + 5, TAIL)
+    # Open top deck: a railing (drawn only) and a low front screen.
+    rail = (226, 226, 230, 255)
+    rect(d, 64, deck - 8, w - 1, deck - 8, rail)
+    for x in range(64, w, 12):
+        rect(d, x, deck - 8, x, deck - 1, rail)
+    rect(d, w - 4, deck - 12, w - 1, deck - 1, red_light)
+    rect(d, w - 3, deck - 11, w - 2, deck - 5, GLASS)
+    # Destination blind (text drawn in game).
+    rect(d, w - 46, deck + 18, w - 22, deck + 24, DARK)
+    d.line((64, deck, w - 1, deck), fill=red_light)
+    for cx in (44, 240):
+        arch(d, cx, h, 6)
+
+
+def make_lorry(d, w, h, top):
+    box, box_dark, box_light = (226, 228, 232, 255), (170, 172, 180, 255), (250, 250, 252, 255)
+    rect(d, 0, top, w - 1, h - 17, box)
+    rect(d, 0, top, w - 1, top + 1, box_light)
+    d.line((0, top, 0, h - 17), fill=box_dark)
+    rect(d, 8, top + 16, w - 9, top + 25, (40, 120, 200, 255))   # the firm's stripe (name in game)
+    rect(d, 8, top + 26, w - 9, top + 27, (230, 190, 40, 255))
+    # Cab under the front of the box (the Luton overhang), chassis behind it.
+    rect(d, w - 26, h - 16, w - 1, h - 1, (60, 90, 170, 255))
+    window(d, w - 16, h - 15, w - 3, h - 9, lit=False)
+    rect(d, w - 2, h - 5, w - 1, h - 3, HEADLIGHT)
+    rect(d, 0, h - 16, w - 27, h - 1, STEEL_DARK)
+    rect(d, 1, h - 6, 2, h - 4, TAIL)
+    for cx in (22, 90):
+        arch(d, cx, h, 7)
+
+
+def make_car(d, w, h, top):
+    paint, paint_dark, paint_light = (240, 200, 40, 255), (184, 140, 20, 255), (255, 236, 120, 255)
+    # A low wedge: its roof is the solid top.
+    rect(d, 2, top + 3, w - 1, h - 3, paint)
+    rect(d, 18, top, 62, top + 3, paint)
+    d.polygon([(62, top), (w - 1, top + 6), (w - 1, top + 9), (62, top + 3)], fill=paint)
+    rect(d, 40, top + 1, 58, top + 3, GLASS)
+    d.line((2, top + 3, w - 1, top + 3), fill=paint_light)
+    rect(d, 0, top + 4, 2, h - 4, paint_dark)
+    rect(d, 0, top + 5, 1, top + 6, TAIL)
+    rect(d, w - 2, top + 9, w - 1, top + 10, HEADLIGHT)
+    rect(d, 2, h - 3, w - 1, h - 1, DARK)
+    for cx in (16, 78):
+        arch(d, cx, h, 5)
+
+
+def make_house_rig(d, w, h, top):
+    deck = top + 64       # the dollies' deck (h1)
+    van, van_dark, van_light = (232, 228, 214, 255), (184, 178, 162, 255), (250, 248, 240, 255)
+    # Supports on the far side (dark), from the caravan down to the decks.
+    for x0 in (10 * 16 + 2, 26 * 16 - 8):
+        rect(d, x0, top + 32, x0 + 5, deck - 1, (58, 54, 64, 255))
+    # Dolly A, the drawbar across the gap, dolly B, and the little tug at the front.
+    rect(d, 0, deck, 16 * 16 - 1, h - 1, STEEL_DARK)
+    rect(d, 0, deck, 16 * 16 - 1, deck + 2, STEEL)
+    rect(d, 19 * 16, deck, w - 1, h - 1, STEEL_DARK)
+    rect(d, 19 * 16, deck, w - 1, deck + 2, STEEL)
+    rect(d, 16 * 16, h - 6, 19 * 16 - 1, h - 5, STEEL)
+    rect(d, 27 * 16, deck + 3, w - 1, h - 1, (236, 180, 40, 255))
+    rect(d, w - 7, deck + 4, w - 2, deck + 9, GLASS)
+    rect(d, w - 2, h - 7, w - 1, h - 5, HEADLIGHT)
+    for x in (6, 100, 200, 340, 390):
+        rect(d, x, deck + 6, x + 5, deck + 8, (230, 190, 40, 255))
+    # The static caravan.
+    rect(d, 10 * 16, top, 27 * 16 - 1, top + 31, van)
+    rect(d, 10 * 16, top, 27 * 16 - 1, top + 1, van_light)
+    rect(d, 10 * 16, top + 29, 27 * 16 - 1, top + 31, van_dark)
+    rect(d, 10 * 16, top + 14, 27 * 16 - 1, top + 15, (120, 170, 140, 255))
+    for x in range(10 * 16 + 52, 27 * 16 - 20, 34):
+        window(d, x, top + 5, x + 14, top + 12)
+    rect(d, 20 * 16, top + 6, 20 * 16 + 9, top + 28, (150, 110, 80, 255))   # the door
+    rect(d, 10 * 16 + 4, top + 4, 10 * 16 + 44, top + 12, (230, 190, 40, 255))  # WIDE LOAD board (text in game)
+    # A TV aerial on the roof (drawn only).
+    rect(d, 23 * 16, top - 6, 23 * 16, top - 1, STEEL_LIGHT)
+    rect(d, 23 * 16 - 4, top - 5, 23 * 16 + 4, top - 5, STEEL_LIGHT)
+    for cx in (24, 228, 332, 428, 464):
+        arch(d, cx, h, 5)
+
+
+def make_transporter(d, w, h, top):
+    blue, blue_dark = (70, 80, 110, 255), (46, 52, 74, 255)
+    # Frame: everything under the ramp and the upper deck.
+    rect(d, 0, top + 64, w - 1, h - 1, STEEL_DARK)
+    for i in range(4):
+        x = (3 + i) * 16
+        d.polygon([(x, top + 64 - 16 * i), (x + 16, top + 48 - 16 * i), (x + 16, top + 64), (x, top + 64)], fill=STEEL_DARK)
+    rect(d, 7 * 16, top, w - 1, top + 63, STEEL_DARK)
+    # The ramp's treads and the upper deck's edge.
+    for i in range(4):
+        x = (3 + i) * 16
+        d.line((x, top + 64 - 16 * i, x + 16, top + 48 - 16 * i), fill=STEEL_LIGHT)
+        d.line((x, top + 65 - 16 * i, x + 16, top + 49 - 16 * i), fill=STEEL)
+    rect(d, 7 * 16, top, w - 1, top + 2, STEEL_LIGHT)
+    rect(d, 0, top + 64, 3 * 16 - 1, top + 66, STEEL_LIGHT)
+    # Cars parked on the lower deck.
+    colours = [(200, 40, 44, 255), (52, 96, 196, 255), (236, 236, 232, 255), (60, 160, 90, 255), (240, 200, 40, 255)]
+    for i, x in enumerate(range(116, w - 76, 48)):
+        c = colours[i % len(colours)]
+        rect(d, x, top + 46, x + 38, top + 56, c)
+        rect(d, x + 8, top + 40, x + 28, top + 46, c)
+        rect(d, x + 11, top + 41, x + 25, top + 45, GLASS)
+        rect(d, x + 4, top + 56, x + 8, top + 59, DARK)
+        rect(d, x + 30, top + 56, x + 34, top + 59, DARK)
+    # Cab at the front, under the upper deck.
+    rect(d, w - 30, top + 20, w - 1, h - 1, blue)
+    rect(d, w - 30, top + 20, w - 1, top + 21, blue_dark)
+    window(d, w - 18, top + 26, w - 3, top + 40, lit=False)
+    rect(d, w - 2, h - 8, w - 1, h - 6, HEADLIGHT)
+    for cx in (20, 40, 60, 284, 344):
+        arch(d, cx, h, 6)
+
+
+def make_vehicles() -> None:
+    drawers = {"bus": make_bus, "lorry": make_lorry, "car": make_car, "houseRig": make_house_rig, "transporter": make_transporter}
+    for name, (cols, rows, above) in VEHICLES.items():
+        w, h = cols * 16, rows * 16 + above
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        drawers[name](ImageDraw.Draw(img), w, h, above)
+        img.save(OUT / f"vehicle_{name}.png")
+
+
+def make_roadside() -> None:
+    """Things fixed to the road: bus stop, lamp post, low bridge, warning sign, sign gantry,
+    tree, the tall building's lower floors and its entrance canopy; and the bus's fare box."""
+    conc, conc_dark, conc_light = (110, 108, 112, 255), (78, 76, 82, 255), (150, 148, 150, 255)
+    # Bus stop: a shelter with a lit timetable, and the stop's flag.
+    img = Image.new("RGBA", (48, 44), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 2, 4, 33, 6, STEEL_DARK)
+    rect(d, 3, 7, 4, 43, STEEL_DARK)
+    rect(d, 31, 7, 32, 43, STEEL_DARK)
+    rect(d, 5, 9, 30, 36, (120, 150, 190, 90))
+    rect(d, 22, 12, 28, 26, LIT)
+    rect(d, 8, 33, 26, 34, STEEL)
+    rect(d, 42, 2, 42, 43, STEEL_LIGHT)
+    rect(d, 37, 2, 47, 11, (200, 40, 44, 255))
+    rect(d, 39, 4, 45, 9, (236, 236, 232, 255))
+    img.save(OUT / "busstop.png")
+    # Lamp post: tall, the lamp reaching out over the road.
+    img = Image.new("RGBA", (24, 120), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 3, 6, 4, 119, STEEL_DARK)
+    rect(d, 2, 112, 5, 119, STEEL)
+    rect(d, 4, 4, 18, 5, STEEL_DARK)
+    rect(d, 14, 6, 21, 8, (255, 236, 170, 255))
+    img.save(OUT / "lamp.png")
+    # Low bridge: the deck in section (40 x 14, chevrons on its face) and its pier on the far side.
+    img = Image.new("RGBA", (40, 100), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 8, 14, 31, 99, conc_dark)
+    d.line((8, 14, 8, 99), fill=conc)
+    rect(d, 0, 0, 39, 13, conc)
+    rect(d, 0, 0, 39, 1, conc_light)
+    for x in range(0, 40, 8):
+        d.polygon([(x, 6), (x + 4, 6), (x + 8, 12), (x + 4, 12)], fill=(230, 190, 40, 255))
+    img.save(OUT / "bridge.png")
+    # Warning sign: a post, a red-rimmed triangle and a plate (text in game).
+    img = Image.new("RGBA", (28, 64), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 13, 20, 14, 63, STEEL_DARK)
+    d.polygon([(14, 0), (27, 18), (0, 18)], fill=(220, 40, 30, 255))
+    d.polygon([(14, 4), (23, 16), (5, 16)], fill=(250, 250, 250, 255))
+    rect(d, 12, 8, 15, 13, DARK)
+    rect(d, 1, 20, 26, 28, (250, 250, 250, 255))
+    img.save(OUT / "warning.png")
+    # Sign gantry: a green board high over the road (text in game), legs on the far side.
+    img = Image.new("RGBA", (96, 170), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 2, 0, 3, 169, STEEL_DARK)
+    rect(d, 92, 0, 93, 169, STEEL_DARK)
+    rect(d, 0, 6, 95, 7, STEEL_DARK)
+    rect(d, 8, 8, 87, 30, (30, 120, 70, 255))
+    d.rectangle((9, 9, 86, 29), outline=(240, 240, 240, 255))
+    img.save(OUT / "gantry.png")
+    # A street tree.
+    img = Image.new("RGBA", (40, 80), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 18, 36, 21, 79, (80, 58, 40, 255))
+    d.ellipse((2, 0, 37, 40), fill=(40, 84, 52, 255))
+    d.ellipse((8, 4, 28, 22), fill=(56, 108, 66, 255))
+    img.save(OUT / "tree.png")
+    # The tall building's lower floors (its top goes off screen): lit windows, a doorway.
+    rnd = __import__("random").Random(7)
+    img = Image.new("RGBA", (240, 400), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 0, 0, 239, 399, (58, 64, 84, 255))
+    for y in range(8, 340, 20):
+        for x in range(10, 230, 16):
+            window(d, x, y, x + 9, y + 11, lit=rnd.random() < 0.55)
+    rect(d, 60, 344, 179, 399, (40, 44, 58, 255))
+    rect(d, 80, 352, 159, 399, LIT)
+    d.line((120, 352, 120, 399), fill=LIT_DIM)
+    img.save(OUT / "building.png")
+    # The entrance canopy: 160 x 6 (the solid part), a fascia with lights underneath.
+    img = Image.new("RGBA", (160, 9), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 0, 0, 159, 5, (200, 40, 44, 255))
+    rect(d, 0, 0, 159, 0, (236, 88, 80, 255))
+    for x in range(6, 160, 14):
+        rect(d, x, 6, x + 3, 7, LIT)
+    img.save(OUT / "canopy.png")
+    # The fare box on the bus's platform: a little ticket machine on a post.
+    img = Image.new("RGBA", (8, 16), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    rect(d, 3, 8, 4, 15, STEEL_DARK)
+    rect(d, 0, 0, 7, 8, STEEL)
+    rect(d, 1, 1, 6, 3, (60, 180, 90, 255))
+    rect(d, 2, 5, 5, 5, DARK)
+    img.save(OUT / "farebox.png")
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     make_vaulter()
@@ -488,4 +766,6 @@ if __name__ == "__main__":
     make_official()
     make_rivals()
     make_medal()
+    make_vehicles()
+    make_roadside()
     print(f"wrote sprites to {OUT}")

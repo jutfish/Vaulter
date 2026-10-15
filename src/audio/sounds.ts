@@ -11,6 +11,9 @@ export const SOUND_FILES = {
   ui_click: 'assets/audio/ui_click.wav',
   crowd_ahh: 'assets/audio/crowd_ahh.wav',
   crowd_cheer: 'assets/audio/crowd_cheer.wav',
+  engine: 'assets/audio/engine.wav',
+  ding: 'assets/audio/ding.wav',
+  whoosh: 'assets/audio/whoosh.wav',
 } as const;
 
 export const MUSIC_FILES = {

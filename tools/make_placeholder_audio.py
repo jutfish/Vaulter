@@ -196,8 +196,45 @@ def make_music() -> None:
     write("music_loop", buf)
 
 
+def make_traffic_sfx() -> None:
+    """The traffic (v0.9): engine rumble (a seamless 2 s loop), the fare box ding, the road's whoosh."""
+    r = random.Random(77)
+    n = 2 * RATE
+    # Engine: a low pulse at 40 Hz with its harmonics (whole cycles in 2 s, so it loops), plus road roar.
+    roar, y = [], 0.0
+    for i in range(n):
+        y += 0.05 * (r.uniform(-1, 1) - y)
+        roar.append(y)
+    fade = int(0.1 * RATE)
+    for i in range(fade):  # crossfade the noise's ends so the loop has no click
+        k = i / fade
+        roar[i] = roar[i] * k + roar[n - fade + i] * (1 - k)
+    roar = roar[: n - fade] + roar[:0]
+    n = len(roar)
+    engine = []
+    for i in range(n):
+        t = i / RATE
+        f = 40 * round(n / RATE) / (n / RATE)
+        p = 2 * math.pi * f * t
+        pulse = 0.5 * square(p) * (0.6 + 0.4 * math.sin(2 * math.pi * t * 2 / (n / RATE)))
+        engine.append(0.35 * pulse + 0.25 * math.sin(2 * p) + 2.5 * roar[i])
+    write("engine", engine)
+    # Ding: two bell partials, like a ticket machine.
+    write("ding", mix(tone(lambda t: 1318.5, 0.7, math.sin, 5, gain=0.5),
+                      tone(lambda t: 2637, 0.4, math.sin, 9, gain=0.2),
+                      [0.0] * int(0.09 * RATE) + tone(lambda t: 1046.5, 0.6, math.sin, 5, gain=0.4)))
+    # Whoosh: noise swelling and fading as the traffic rushes past.
+    m, out, y = int(0.9 * RATE), [], 0.0
+    for i in range(m):
+        k = i / m
+        y += (0.05 + 0.4 * k) * (r.uniform(-1, 1) - y)
+        out.append(y * math.sin(math.pi * k) ** 2)
+    write("whoosh", out)
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     make_sfx()
     make_music()
+    make_traffic_sfx()
     print(f"wrote audio to {OUT}")

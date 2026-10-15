@@ -1,5 +1,7 @@
 import type { LevelData } from '../gameplay/level';
+import type { RoadsideThing, TrafficData } from '../gameplay/traffic';
 import { TILE } from './tuning';
+import { VEHICLES, type VehicleType } from './vehicles';
 
 /** Simple editable description of a flat test level. Units are tiles (16 px). */
 export interface FlatLevelSpec {
@@ -281,4 +283,143 @@ export const longRunMarks: LongRunMarks = longRun.marks;
 
 export function buildLongRun(): LevelData {
   return longRun.data;
+}
+
+/** Columns of the traffic level's vehicles and obstacles (for tests, probes and the view). */
+export interface TrafficMarks {
+  /** Row of the road's surface tiles. */
+  roadRow: number;
+  bus: number;
+  /** The bus's top deck (h2) runs from here to the bus's front. */
+  busDeck: number;
+  busFront: number;
+  /** A second open-top bus ahead (hop the gap at a sprint): the run-up for the lorry. */
+  bus2: number;
+  bus2Front: number;
+  /** Luton box lorry (roof h4). */
+  lorry: number;
+  lorryFront: number;
+  /** Low sports car (roof h1). */
+  car: number;
+  carFront: number;
+  /** The house move: dolly A, the gap under the caravan [gapFrom, gapTo), dolly B and the tug (one deck). */
+  rig: number;
+  caravanFrom: number;
+  caravanTo: number;
+  gapFrom: number;
+  gapTo: number;
+  /** Car transporter: its ramp up, and the front of its upper deck (h5). */
+  transporter: number;
+  upperDeck: number;
+  deckFront: number;
+}
+
+/**
+ * The traffic (v0.9), right after the stadium: in the traffic's frame the
+ * vehicles stand still and the road moves. Board the open-top bus at the
+ * stop (the medal pays the fare), hop across to the bus in front and vault
+ * up onto the box lorry, get down onto
+ * the low car before a low bridge sweeps you off, walk the pole across the
+ * gap under the caravan, then up the car transporter and onto a building's
+ * canopy as it passes.
+ */
+function layTraffic(): { data: LevelData; marks: TrafficMarks } {
+  const cols = 129;
+  const rows = 22;
+  const roadRow = 19;
+  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (): string => (r === roadRow ? '=' : r > roadRow ? '#' : '.')));
+  const vehicles: TrafficData['vehicles'] = [];
+  const place = (type: VehicleType, col: number): number => {
+    const shape = VEHICLES[type].shape;
+    shape.forEach((line, i) => {
+      const row = roadRow - shape.length + i;
+      for (let k = 0; k < line.length; k++) {
+        const c = line[k]!;
+        if (c !== '.') grid[row]![col + k] = c === '#' ? 'V' : c;
+      }
+    });
+    vehicles.push({ type, col });
+    return col + shape[0]!.length;
+  };
+  grid[roadRow - 1]![2] = 'S';
+  const bus = 5;
+  const busFront = place('bus', bus);
+  const bus2 = busFront + 3;
+  const bus2Front = place('bus', bus2);
+  const lorry = bus2Front + 1;
+  const lorryFront = place('lorry', lorry);
+  const car = lorryFront + 7;
+  const carFront = place('car', car);
+  const rig = carFront + 1;
+  const rigEnd = place('houseRig', rig);
+  const transporter = rigEnd + 2;
+  const deckFront = place('transporter', transporter);
+  // One city block of roadside, repeating. At the start a bridge is over the house move and a
+  // canopy over the second bus. The bridge reaches the lorry ~4.5 s after the bus pulls off (just
+  // after you'd land on it); canopies pass the transporter's front ~3 s after and then every 9 s,
+  // half a block from the bridges.
+  const block = 1800;
+  const bridgeX = 1300;
+  const lamps: RoadsideThing[] = Array.from({ length: block / 200 }, (_, k) => ({ kind: 'lamp', x: 60 + k * 200, periodic: true }));
+  const traffic: TrafficData = {
+    platform: { from: bus + 1, to: bus + 3, h: 1 },
+    vehicles,
+    block,
+    roadside: [
+      { kind: 'busStop', x: 24, periodic: false },
+      ...lamps,
+      { kind: 'gantry', x: 760, periodic: true },
+      { kind: 'warning', x: bridgeX - 330, periodic: true },
+      { kind: 'bridge', x: bridgeX, periodic: true },
+      { kind: 'building', x: bridgeX - 940, periodic: true },
+      { kind: 'tree', x: bridgeX + 420, periodic: true },
+      { kind: 'tree', x: bridgeX - 560, periodic: true },
+    ],
+    bridge: { w: 40, bottom: 85, top: 99 },
+    canopy: { dx: 40, w: 160, top: 116, thickness: 6 },
+    poleDrop: { col: bus + 7, h: 2 },
+  };
+  return {
+    data: {
+      name: 'Traffic',
+      rows: grid.map((r) => r.join('')),
+      traffic,
+      zones: [{ from: 0, theme: 'road' }],
+      // Just past each obstacle, in order: on the bus, the lorry, the car, past the gap, then the canopy.
+      checkpoints: [
+        { col: bus + 5, h: 2, facing: 1, from: bus + 4, to: busFront },
+        { col: lorry + 2, h: 4, facing: 1, from: lorry, to: lorryFront },
+        { col: car + 2, h: 1, facing: 1, from: car, to: rig + 10 },
+        { col: rig + 21, h: 1, facing: 1, from: rig + 19, to: rig + 30 },
+        { col: deckFront - 1, h: 5, facing: 1, from: 0, to: 0, goal: true },
+      ],
+    },
+    marks: {
+      roadRow,
+      bus,
+      busDeck: bus + 4,
+      busFront,
+      bus2,
+      bus2Front,
+      lorry,
+      lorryFront,
+      car,
+      carFront,
+      rig,
+      caravanFrom: rig + 10,
+      caravanTo: rig + 27,
+      gapFrom: rig + 16,
+      gapTo: rig + 19,
+      transporter,
+      upperDeck: transporter + 7,
+      deckFront,
+    },
+  };
+}
+
+const trafficLevel = layTraffic();
+export const trafficMarks: TrafficMarks = trafficLevel.marks;
+
+export function buildTraffic(): LevelData {
+  return trafficLevel.data;
 }

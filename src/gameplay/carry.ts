@@ -22,7 +22,8 @@ export interface Hand {
 }
 
 /** Why the pole got away from the vaulter. */
-export type DropReason = 'yanked' | 'slipped' | 'bonk' | 'letGo';
+/** dragged: planted on the moving road, which took it. */
+export type DropReason = 'yanked' | 'slipped' | 'bonk' | 'letGo' | 'dragged';
 
 export interface CarryState {
   /** Is the vaulter holding the pole? When not, it's a free object in the level. */
@@ -52,6 +53,8 @@ export interface CarryState {
   beam: BeamState;
   /** Number of completed hand moves (for tests/feedback). */
   handMoves: number;
+  /** A loose pole being carried off by the moving road (traffic.ts moves it; no physics). */
+  swept: boolean;
 }
 
 const L = pole.totalLength;
@@ -80,6 +83,7 @@ export function createCarry(feetX = 0, feetY = 0, facing: 1 | -1 = 1): CarryStat
     strain: 0,
     beam: createBeam(),
     handMoves: 0,
+    swept: false,
   };
   placePole(c.pole, handMid(c), feetX + c.anchorDX, feetY + c.anchorDY, c.leadCmd);
   return c;
@@ -249,8 +253,9 @@ export function stepCarry(c: CarryState, p: CarryInputs, dt: number): DropReason
   c.anchorDY = lx * Math.sin(rot) + ly * Math.cos(rot) + c.bob;
 
   if (!c.held) {
-    // Nobody's holding it: it falls, bounces and settles on its own.
-    stepFreePole(c.pole, p.level, dt, c.hold);
+    // Nobody's holding it: it falls, bounces and settles on its own (unless the road has it).
+    if (c.swept) c.hold.contact = 0;
+    else stepFreePole(c.pole, p.level, dt, c.hold);
     c.strain = approachExp(c.strain, 0, 12, dt);
     return null;
   }
@@ -370,6 +375,7 @@ export function grabPole(c: CarryState, feetX: number, feetY: number, vx: number
   const theta = c.pole.theta;
   placePole(c.pole, s, hx, hy, theta, vx, vy);
   c.held = true;
+  c.swept = false;
   c.movePause = 0;
   resetBeamHistory(c.beam);
   return true;
@@ -411,6 +417,7 @@ export function onLeftPole(c: CarryState, gripX: number, gripY: number, leadDir:
 /** Restart / teleport: put the pole back in the hands at rest. */
 export function resetPoleToHands(c: CarryState, feetX: number, feetY: number): void {
   c.held = true;
+  c.swept = false;
   placePole(c.pole, handMid(c), feetX + c.anchorDX, feetY + c.anchorDY, axisFor(c, c.leadCmd));
   clearBeam(c.beam);
 }
