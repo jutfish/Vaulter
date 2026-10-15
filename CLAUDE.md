@@ -13,24 +13,24 @@ Do NOT preserve: routine tool logs, superseded file dumps, ruled-out approaches 
 - Design/feel decisions → `docs/design-intent.md`. Physics model, tuning and rejected models → `docs/vault-physics.md`. Levels, tiles and timing windows → `docs/level-design.md`. Generated audio → `docs/audio-assets.md`.
 - Read `docs/design-intent.md` and `docs/vault-physics.md` at the start of any session that touches movement or the vault.
 
-## Current state (2026-10-11)
-- **v0.4.0** (JT played it, live at jutfish.github.io/Vaulter): the long run with slopes and the backwards-vault switchback. JT: fiddly to discover but very satisfying = exactly the vibe; game = discover what the pole can do, then execute; short, maybe one continuous level. Got past the switchback, not yet the big wall. Asked for: stricter pole contacts, hints carved in the land when stuck, a lost-pole hint.
-- **v0.5.0 built, awaiting JT's play** (2026-10-11, pushed and deployed):
-  1. strict pole contacts (`poleBody.ts`): out the way it came in, positional, 2 px spacing; plant drop collides with walls/ceilings; drawn wobble kept out of the ground. Penetration probe: >3 px ticks 1.3%/23% → 0.00%.
-  2. hints carved into the land (`gameplay/hints.ts`, `data/hints.ts`, `rendering/pixelFont.ts`), stuck timers per obstacle across restarts; lost-pole hint after 3 s. See `docs/level-design.md`.
-- **v0.6.0 built, awaiting JT's play** (pushed and deployed): gold → silver → bronze → black poles. Lose the pole → 9 s knock-down count (big, flashing, centre; HUD) → next pole in hand, old one gone; black→black 3 s; R = gold again. Logic in `World.countPoleLoss` (`poleTiers` in tuning), colours in WorldView, count in Hud. JT wrote "Gold" for the third pole; built as **Bronze** (medal order) — confirm. 74 tests, build OK; checked the count and the silver pole in the browser.
-- **Words in the land reworked, awaiting JT's look** (pushed and deployed): only the intro line (start, big), "HOP TO IT." (backwards jump, big), "DON'T LET THIS OPPORTUNITY SLIP AWAY." (diagonal down the long slope), the win line (carved on finishing) and the lost-pole note. All other hints removed (mechanism kept, unused). Lost-pole note now never overlaps other text (JT saw text carved over text). 76 tests; looked at all four writings in the browser.
-- Verified (v0.5): 69 tests, build OK, probes (vault windows unchanged); screenshots of the carved cliff hints and the lost-pole hint. Browser-pane screenshots can show only the top-left quarter of the page magnified (pane DPR quirk, not a game bug): draw `__vaulter.snapshot()` into a 50vw x 50vh img to see it.
+## Current state (2026-10-15)
+- **Live:** v0.6.0 + words-in-the-land rework at https://jutfish.github.io/Vaulter/ (main = `fbffe5c`, clean). 76 tests, build OK.
+- **Vision (JT):** discover what the pole can do, then execute it; fiddly-to-find but satisfying tricks (the backwards jump is the model); short, maybe one continuous level; chaos and old-school difficulty are good. See `docs/design-intent.md`.
+- **Level:** the long run (`buildLongRun`, `CourseBuilder`, `longRunMarks`): warm-up wall, potholes, hills (45° slope tiles), plateau, the backwards-vault switchback (ledge then upper tier), long downslope into the 80 px big wall, potholes, last wall. `tests/course.test.ts` plays it start to flag.
+- **Pole:** own rigid body held by the hands; strict contacts (out the way it came in, positional); plant drop collides with walls/ceilings. Gold → silver → bronze → black poles: lose it → 9 s knock-down count (HUD) → next pole in hand; black→black 3 s; R = gold (`World.countPoleLoss`, `poleTiers`). Bronze confirmed by JT.
+- **Words in the land** (`src/data/hints.ts`): intro line, "HOP TO IT." (backwards jump), "DON'T LET THIS OPPORTUNITY SLIP AWAY." (down the long slope), win line (carved on finishing), lost-pole note (3 s without the pole; placed clear of all other text). Stuck-timer hint mechanism exists but is unused.
+- **Not yet played by JT:** strict contacts, pole tiers, the new words. JT hadn't yet beaten the big wall (tip: full speed down the slope, plant on the flat 7–10 tiles out, release ~0.4 s).
+- Browser-pane screenshots sometimes show only the top-left quarter of the page magnified (pane quirk, not a game bug): wait 1 s and retry, or draw `__vaulter.snapshot()` into a 50vw x 50vh img.
 
 ## Open items
-- JT's play → strictness feel; big wall (80 px) is the hardest obstacle (JT hadn't solved it yet).
-- The lost-pole hint still says "press R to restart", which the new-pole count makes misleading: JT is rewording hints.
-- Hint progress isn't saved between sessions (closing the tab resets stuck timers and carvings).
+- JT's play → feel of strict contacts and pole tiers; big wall difficulty.
+- JT will reword hints; the lost-pole note still says "press R to restart" (misleading now that a new pole appears).
 - Backwards launches show quality 0% (quality rewards forward speed): decide whether a good backwards vault should score.
-- `firstWall` level is still used by tests/probes only; no level select yet.
+- Carved hints aren't saved between sessions; `firstWall` level is used by tests/probes only (no level select).
 - v3 carry tuning still open: `carry` in `src/data/tuning.ts` (weight = `armTorque`, swing = `rotOmega`/`rotVelocityGain`, hand-walk = `handMoveTime`, losing it = `gripBreakStretch`/`slipStretch`, pick-up = `grabReach`, flip = `leadFlipAngle`).
-- Next ideas: gamepad (stick = lead direction), javelin throw, pole-world puzzles, drag/strain sounds, more levels + level select.
+- Next ideas: gamepad (stick = lead direction), javelin throw, pole-world puzzles, drag/strain sounds, more of the one continuous level.
 - Connect ElevenLabs (official `elevenlabs-mcp` via `uvx`; key in agent config, never in repo), then propose prompts for approval.
+- Local branch `backup-before-email-rewrite` can be deleted. Commits must use the GitHub noreply email (repo-local `user.email` is set).
 
 ## Standing rules
 - **Feel first.** Any change to run/hop/vault must keep `tests/vault.test.ts` sweet-spot tests and `tests/course.test.ts` (the course is still completable) passing; run `npm run probe` and record the tables in docs/vault-physics.md / docs/level-design.md when tuning changes.
